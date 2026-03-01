@@ -3,8 +3,11 @@ vim.cmd("set tabstop=4")
 vim.cmd("set softtabstop=4")
 vim.cmd("set shiftwidth=4")
 vim.cmd("set relativenumber")
---vim.cmd("let g:netrw_liststyle = 3")
---vim.cmd("let g:netrw_banner = 0")
---vim.cmd("let g:netrw_winsize = 25")
---vim.cmd("let g:netrw_browse_split = 4")
---vim.cmd("let g:netrw_altv = 4")
+
+-- shortcuts
+-- quickfix movement
+vim.keymap.set("n","<M-j>","<cmd>cnext<CR>")
+vim.keymap.set("n","<M-k>","<cmd>cprev<CR>")
+
+-- telescope
+vim.keymap.set("n","<M-k>","<cmd>cprev<CR>")
