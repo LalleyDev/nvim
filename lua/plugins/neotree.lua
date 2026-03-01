@@ -9,8 +9,8 @@ return {
     },
     lazy = false, -- neo-tree will lazily load itself
     config = function()
-        vim.keymap.set('n','<leader>e', '<cmd>Neotree action=focus source=filesystem position=right toggle=true<CR>')
-        vim.keymap.set('n','<leader>b', '<cmd>Neotree action=focus source=buffers position=right toggle=true<CR>')
+        vim.keymap.set('n','<leader>d', ':Neotree action=focus source=filesystem position=right toggle=true<CR>')
+        vim.keymap.set('n','<leader>b', ':Neotree action=focus source=buffers position=right toggle=true<CR>')
     end
   }
 }
