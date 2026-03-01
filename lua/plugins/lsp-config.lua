@@ -1,4 +1,4 @@
-return{
+return{ 
     {
         -- installs and manages lsps
         "williamboman/mason.nvim",
@@ -14,15 +14,15 @@ return{
                 -- add the language server here first
                 ensure_installed = {
                     "lua_ls",
+                    "jdtls",
                 }
             })
         end
     },
     {
-        -- config the lsp interactions
-        -- between neovim and lsp
         "neovim/nvim-lspconfig",
         dependencies = {
+            'saghen/blink.cmp',
             {
                 "folke/lazydev.nvim",
                 ft = "lua", -- only load on lua files
@@ -36,10 +36,15 @@ return{
             },
         },
         config = function()
+            local capabilities = require("blink.cmp").get_lsp_capabilities()
 
+            vim.lsp.config('*',{
+                capabilities = capabilities
+            })
+
+            vim.lsp.config("lua_ls",{})
             -- lsp servers
-            vim.lsp.enable('lua_ls')
-
+            vim.lsp.enable( 'lua_ls')
             -- lsp config keybinds
             vim.keymap.set('n','K',vim.lsp.buf.hover,{})
             vim.keymap.set('n','gd',vim.lsp.buf.definition,{})
