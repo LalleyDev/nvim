@@ -1,19 +1,13 @@
 
 -- This is the floating terminal
-vim.keymap.set("n","<space>t",function()
+vim.keymap.set("n","<space>lt",function()
     vim.cmd.vnew()
-    vim.cmd.term()
+    vim.cmd.term("powershell")
     vim.cmd.wincmd("J")
     vim.api.nvim_win_set_height(0,15)
-    job_id = vim.bo.channel
-    vim.fn.chansend(job_id, {"powershell\r\n"})
-    vim.fn.chansend(job_id, {"clear\r\n"})
-
-    -- Start in insert mode
     vim.cmd("startinsert")
 end)
 
-vim.keymap.set("t","<esc><esc>","<c-\\><c-n>")
 
 local state = {
     floating = {
@@ -61,11 +55,8 @@ local toggle_terminal = function()
     if not vim.api.nvim_win_is_valid(state.floating.win) then
         state.floating = open_floating_terminal { buf = state.floating.buf }
         if vim.bo[state.floating.buf].buftype ~= "terminal" then
-            vim.cmd.terminal()
+            vim.cmd.terminal("powershell")
             vim.cmd("startinsert")
-            job_id = vim.bo.channel
-            vim.fn.chansend(job_id, {"powershell\r\n"})
-            vim.fn.chansend(job_id, {"clear\r\n"})
         end
     else
         vim.api.nvim_win_hide(state.floating.win)
@@ -73,6 +64,6 @@ local toggle_terminal = function()
 end
 
 vim.api.nvim_create_user_command("Floatt",toggle_terminal,{})
-vim.keymap.set({"n","t"}, "<space>tt", toggle_terminal)
+vim.keymap.set({"n","t"}, "<space>t", toggle_terminal)
 
 

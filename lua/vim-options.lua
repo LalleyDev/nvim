@@ -21,3 +21,6 @@ vim.keymap.set("n", "<C-_>", "gcc", { remap = true, desc = "Toggle comment line"
 -- Visual Mode: Toggle comment on selection
 vim.keymap.set("v", "<C-/>", "gc", { remap = true, desc = "Toggle comment selection" })
 vim.keymap.set("v", "<C-_>", "gc", { remap = true, desc = "Toggle comment selection" })
+
+-- Quality of life terminal keymaps
+vim.keymap.set("t","<esc><esc>","<c-\\><c-n>")
