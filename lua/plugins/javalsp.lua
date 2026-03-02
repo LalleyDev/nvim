@@ -15,9 +15,9 @@ return {
         return root_dir and vim.fs.basename(root_dir)
       end,
 
-      -- NEW: Paths redirected to nvim-data/projects/
+      -- Logic for nvim-data/projects/{name}
       jdtls_project_base = function(project_name)
-        return vim.fn.stdpath("data") .. "/projects/" .. project_name
+        return vim.fs.joinpath(vim.fn.stdpath("data"), "projects", project_name)
       end,
 
       -- Base command
@@ -29,8 +29,8 @@ return {
         
         if project_name then
           vim.list_extend(new_cmd, {
-            "-configuration", base .. "/config",
-            "-data", base .. "/workspace",
+            "-configuration", vim.fs.joinpath(base, "config"),
+            "-data", vim.fs.joinpath(base, "workspace"),
           })
         end
         return new_cmd
@@ -47,16 +47,20 @@ return {
 
       local base_dir = opts.jdtls_project_base(project_name)
       
+      -- Ensure the directories exist in nvim-data before starting
+      -- Linux is usually fine, but this prevents JDTLS from falling back to project root
+      vim.fn.mkdir(vim.fs.joinpath(base_dir, "storage"), "p")
+      vim.fn.mkdir(vim.fs.joinpath(base_dir, "config"), "p")
+      vim.fn.mkdir(vim.fs.joinpath(base_dir, "workspace"), "p")
+      
       local config = {
         cmd = opts.full_cmd(opts, project_name),
         root_dir = root_dir,
-        -- Integrate blink.cmp capabilities
         capabilities = require("blink.cmp").get_lsp_capabilities(),
         
-        -- This is the magic part that redirects the metadata storage
         init_options = {
           workspaceStorage = {
-            storagePath = base_dir .. "/storage"
+            storagePath = vim.fs.joinpath(base_dir, "storage")
           },
         },
 
@@ -64,7 +68,6 @@ return {
           java = {
             signatureHelp = { enabled = true },
             contentProvider = { preferred = 'fernflower' },
-            -- Prevents JDTLS from being too aggressive with project-root files
             configuration = {
               updateBuildConfiguration = "interactive",
             },
@@ -81,7 +84,7 @@ return {
       callback = attach_jdtls,
     })
 
-    -- Native Keymaps
+    -- LspAttach Keymaps
     vim.api.nvim_create_autocmd("LspAttach", {
       callback = function(args)
         local client = vim.lsp.get_client_by_id(args.data.client_id)
@@ -89,12 +92,11 @@ return {
           local map = function(lhs, rhs, desc)
             vim.keymap.set("n", lhs, rhs, { buffer = args.buf, desc = desc })
           end
-
           map("<leader>co", require("jdtls").organize_imports, "Organize Imports")
           -- map("<leader>cr", vim.lsp.buf.rename, "Rename")
           -- map("<leader>ca", vim.lsp.buf.code_action, "Code Action")
-        end
-      end,
+      end
+  end,
     })
 
     -- Run once if current file is Java
