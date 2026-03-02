@@ -7,7 +7,7 @@ return {
     return {
       -- Standard root detection
       root_dir = function(path)
-        return vim.fs.root(path, { ".git", "mvnw", "gradlew", "pom.xml", "build.gradle" })
+        return vim.fs.root(path, { ".git", "pom.xml" })
       end,
 
       -- Project-specific workspace naming
@@ -15,27 +15,22 @@ return {
         return root_dir and vim.fs.basename(root_dir)
       end,
 
-      -- Paths for JDTLS data
-      jdtls_config_dir = function(project_name)
-        return vim.fn.stdpath("cache") .. "/jdtls/" .. project_name .. "/config"
-      end,
-      jdtls_workspace_dir = function(project_name)
-        return vim.fn.stdpath("cache") .. "/jdtls/" .. project_name .. "/workspace"
+      -- NEW: Paths redirected to nvim-data/projects/
+      jdtls_project_base = function(project_name)
+        return vim.fn.stdpath("data") .. "/projects/" .. project_name
       end,
 
-      -- Base command (assumes 'jdtls' is in your $PATH via Mason or manual install)
+      -- Base command
       cmd = { "jdtls" },
       
-      full_cmd = function(opts)
-        local fname = vim.api.nvim_buf_get_name(0)
-        local root_dir = opts.root_dir(fname)
-        local project_name = opts.project_name(root_dir)
+      full_cmd = function(opts, project_name)
+        local base = opts.jdtls_project_base(project_name)
         local new_cmd = vim.deepcopy(opts.cmd)
         
         if project_name then
           vim.list_extend(new_cmd, {
-            "-configuration", opts.jdtls_config_dir(project_name),
-            "-data", opts.jdtls_workspace_dir(project_name),
+            "-configuration", base .. "/config",
+            "-data", base .. "/workspace",
           })
         end
         return new_cmd
@@ -45,17 +40,34 @@ return {
   config = function(_, opts)
     local function attach_jdtls()
       local fname = vim.api.nvim_buf_get_name(0)
+      local root_dir = opts.root_dir(fname)
+      local project_name = opts.project_name(root_dir)
+
+      if not project_name then return end
+
+      local base_dir = opts.jdtls_project_base(project_name)
       
-      -- Minimal config for start_or_attach
       local config = {
-        cmd = opts.full_cmd(opts),
-        root_dir = opts.root_dir(fname),
-        -- Integrate blink.cmp capabilities here
+        cmd = opts.full_cmd(opts, project_name),
+        root_dir = root_dir,
+        -- Integrate blink.cmp capabilities
         capabilities = require("blink.cmp").get_lsp_capabilities(),
+        
+        -- This is the magic part that redirects the metadata storage
+        init_options = {
+          workspaceStorage = {
+            storagePath = base_dir .. "/storage"
+          },
+        },
+
         settings = {
           java = {
             signatureHelp = { enabled = true },
             contentProvider = { preferred = 'fernflower' },
+            -- Prevents JDTLS from being too aggressive with project-root files
+            configuration = {
+              updateBuildConfiguration = "interactive",
+            },
           }
         }
       }
@@ -69,7 +81,7 @@ return {
       callback = attach_jdtls,
     })
 
-    -- Native Keymaps (No Which-Key)
+    -- Native Keymaps
     vim.api.nvim_create_autocmd("LspAttach", {
       callback = function(args)
         local client = vim.lsp.get_client_by_id(args.data.client_id)
