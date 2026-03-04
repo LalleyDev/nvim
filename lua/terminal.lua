@@ -3,6 +3,7 @@
 vim.keymap.set("n","<space>lt",function()
     vim.cmd.vnew()
     vim.cmd.term("powershell")
+    vim.cmd.term()
     vim.cmd.wincmd("J")
     vim.api.nvim_win_set_height(0,15)
     vim.cmd("startinsert")
@@ -56,6 +57,7 @@ local toggle_terminal = function()
         state.floating = open_floating_terminal { buf = state.floating.buf }
         if vim.bo[state.floating.buf].buftype ~= "terminal" then
             vim.cmd.terminal("powershell")
+            vim.cmd.terminal()
             vim.cmd("startinsert")
         end
     else

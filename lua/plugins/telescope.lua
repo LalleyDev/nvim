@@ -31,6 +31,11 @@ return {
                 })
                 builtin.find_files(opts)
             end)
+            vim.keymap.set('n','<space>gs', function()
+                local opts = require('telescope.themes').get_dropdown({
+                })
+                builtin.git_status(opts)
+            end)
         end
     },
     {

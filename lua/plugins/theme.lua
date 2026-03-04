@@ -1,4 +1,5 @@
-local theme = "tokyo"
+-- local theme = "tokyo"
+local theme = "gruv"
 -- local theme = "cat"
 -- local theme = "default"
 
@@ -22,18 +23,14 @@ elseif theme == "cat" then
             vim.cmd.colorscheme "catppuccin-macchiato"
         end
     }
+elseif theme == "gruv" then
+    return{
+        "ellisonleao/gruvbox.nvim",
+        priority = 1000 ,
+        config = true,
+        opts = {},
+    }
 elseif theme == "default" then
     return{
-    }
-
-elseif theme == "cat" then
-    return{
-        "catppuccin/nvim",
-        name = "catppuccin",
-        priority = 1000,
-        config = function()
-            -- latte, frappe, macchiato, mocha
-            vim.cmd.colorscheme "catppuccin-macchiato"
-        end
     }
 end
