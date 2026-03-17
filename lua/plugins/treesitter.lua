@@ -7,4 +7,5 @@ return {
     sync_install = false,
     highlight = {enable = true},
     indent = {enable = true},
+    opts = {ensure_installed= {"java"}},
 }
