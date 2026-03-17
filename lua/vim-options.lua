@@ -24,3 +24,14 @@ vim.keymap.set("v", "<C-_>", "gc", { remap = true, desc = "Toggle comment select
 
 -- Quality of life terminal keymaps
 vim.keymap.set("t","<esc><esc>","<c-\\><c-n>")
+
+-- Diagnostics
+vim.diagnostic.config({
+    virtual_text = {
+        prefix = "●",
+        spacing = 4,
+    },
+    signs = true,
+    underline = true,
+    update_in_insert = false,
+})
