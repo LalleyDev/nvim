@@ -15,6 +15,7 @@ return{
                 ensure_installed = {
                     "lua_ls",
                     "jdtls",
+                    "gopls",
                 }
             })
         end
@@ -53,8 +54,14 @@ return{
             })
 
             vim.lsp.config("lua_ls",{})
+            vim.lsp.config("typescript-language-server",{})
+            vim.lsp.config("gopls",{
+                filetypes = { "go", "gomod", "gowork", "gotmpl" }
+            })
             -- lsp servers
             vim.lsp.enable( 'lua_ls')
+            vim.lsp.enable( 'gopls')
+            vim.lsp.enable("typescript-language-server")
             -- lsp config keybinds
             vim.keymap.set('n','K',vim.lsp.buf.hover,{})
             vim.keymap.set('n','gd',vim.lsp.buf.definition,{})
