@@ -16,6 +16,7 @@ return{
                     "lua_ls",
                     "jdtls",
                     "gopls",
+                    "ts_ls",
                 }
             })
         end
@@ -54,14 +55,14 @@ return{
             })
 
             vim.lsp.config("lua_ls",{})
-            vim.lsp.config("typescript-language-server",{})
+            vim.lsp.config("ts_ls",{})
             vim.lsp.config("gopls",{
                 filetypes = { "go", "gomod", "gowork", "gotmpl" }
             })
             -- lsp servers
             vim.lsp.enable( 'lua_ls')
             vim.lsp.enable( 'gopls')
-            vim.lsp.enable("typescript-language-server")
+            vim.lsp.enable("ts_ls")
             -- lsp config keybinds
             vim.keymap.set('n','K',vim.lsp.buf.hover,{})
             vim.keymap.set('n','gd',vim.lsp.buf.definition,{})

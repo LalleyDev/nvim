@@ -74,11 +74,16 @@ return {
                 textDocument = {
                     completion = {
                         completionItem = {
-                            resolveSupport = { properties = { "documentation", "detail" } }
+                            snippetSupport = false,
+                            labelDetailsSupport = false,
+                            deprecatedSupport = true,
+                            preselectSupport = false,
+                            insertReplaceSupport = false,
                         }
                     }
                 }
             })
+            caps.textDocument.completion.completionItem.resolveSupport = nil
             local config = {
                 cmd = opts.full_cmd(opts),
                 root_dir = opts.root_dir(fname),
