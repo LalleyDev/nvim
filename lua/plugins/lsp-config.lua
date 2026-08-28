@@ -1,4 +1,4 @@
-return{ 
+return{
     {
         -- installs and manages lsps
         "williamboman/mason.nvim",
@@ -15,24 +15,12 @@ return{
                 ensure_installed = {
                     "lua_ls",
                     "jdtls",
-                    "gopls",
-                    "ts_ls",
                 }
             })
         end
     },
     {
         "neovim/nvim-lspconfig",
-        opts = {
-            servers = {
-                jdtls = {},
-            },
-        },
-        setup = {
-            jdtls = function()
-                return true
-            end,
-        },
         dependencies = {
             'saghen/blink.cmp',
             {
@@ -55,14 +43,9 @@ return{
             })
 
             vim.lsp.config("lua_ls",{})
-            vim.lsp.config("ts_ls",{})
-            vim.lsp.config("gopls",{
-                filetypes = { "go", "gomod", "gowork", "gotmpl" }
-            })
             -- lsp servers
             vim.lsp.enable( 'lua_ls')
-            vim.lsp.enable( 'gopls')
-            vim.lsp.enable("ts_ls")
+            vim.lsp.enable("jdtls")
             -- lsp config keybinds
             vim.keymap.set('n','K',vim.lsp.buf.hover,{})
             vim.keymap.set('n','gd',vim.lsp.buf.definition,{})
