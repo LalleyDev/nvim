@@ -35,5 +35,6 @@ require("lazy").setup({
 })
 
 
+
 require("vim-options")
 require("terminal")

@@ -1,6 +1,6 @@
 -- local theme = "tokyo"
-local theme = "gruv"
--- local theme = "cat"
+-- local theme = "gruv"
+local theme = "cat"
 -- local theme = "default"
 
 if theme == "tokyo" then

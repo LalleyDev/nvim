@@ -115,8 +115,8 @@ return {
                     end
 
                     map("<leader>co", require("jdtls").organize_imports, "Organize Imports")
-                    -- map("<leader>cr", vim.lsp.buf.rename, "Rename")
-                    -- map("<leader>ca", vim.lsp.buf.code_action, "Code Action")
+                    map("<leader>cr", vim.lsp.buf.rename, "Rename")
+                    map("<leader>ca", vim.lsp.buf.code_action, "Code Action")
                 end
             end,
         })
