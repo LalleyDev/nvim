@@ -134,7 +134,7 @@ return {
 
       jdtls_config_dir = function(project_name)
         local config =
-        vim.fn.stdpath("cache")
+        vim.fn.stdpath("data")
         .. "/jdtls/"
         .. project_name
         .. "/config"
@@ -144,7 +144,7 @@ return {
 
       jdtls_workspace_dir = function(project_name)
         local workspace =
-        vim.fn.stdpath("cache")
+        vim.fn.stdpath("data")
         .. "/jdtls/"
         .. project_name
         .. "/workspace"
@@ -317,8 +317,23 @@ return {
         -- JDTLS attached
         ----------------------------------------------------------------------
 
-        on_attach = function(_, bufnr)
+        on_attach = function(client, bufnr)
           local jdtls = require("jdtls")
+
+          --------------------------------------------------------------------
+          -- Stop blink from sending completionItem/resolve requests.
+          -- We advertise no resolveSupport (see caps above), so resolve
+          -- returns nothing useful, yet blink still fires it while
+          -- server_capabilities.completionProvider.resolveProvider is true.
+          -- Those stale resolves are what trigger the JDTLS
+          -- "Invalid completion proposal" IllegalStateException in the log.
+          --------------------------------------------------------------------
+
+          if client.server_capabilities.completionProvider then
+            client.server_capabilities
+            .completionProvider
+            .resolveProvider = false
+          end
 
           --------------------------------------------------------------------
           -- Java keymaps

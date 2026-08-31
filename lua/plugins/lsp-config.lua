@@ -15,7 +15,14 @@ return {
         ensure_installed = {
           "lua_ls",
           "jdtls",
-        }
+        },
+        -- Java is driven exclusively by nvim-jdtls (see javalsp.lua).
+        -- Exclude jdtls here so mason-lspconfig's automatic_enable does
+        -- not ALSO start a plain lspconfig jdtls client on Java buffers,
+        -- which would double-attach and desync edits/completions.
+        automatic_enable = {
+          exclude = { "jdtls" },
+        },
       })
     end
   },
@@ -58,8 +65,10 @@ return {
         },
       })
       -- lsp servers
+      -- NOTE: jdtls is intentionally NOT enabled here. It is started by
+      -- nvim-jdtls in javalsp.lua. Enabling it here too would attach a
+      -- second Java client and cause completion/diagnostic desyncs.
       vim.lsp.enable('lua_ls')
-      vim.lsp.enable("jdtls")
       -- lsp config keybinds
       vim.keymap.set('n', 'K', vim.lsp.buf.hover, {})
       vim.keymap.set('n', 'gd', vim.lsp.buf.definition, {})
