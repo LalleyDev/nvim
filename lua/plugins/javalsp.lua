@@ -44,11 +44,11 @@ return {
 
     if ok and mason_registry.has_package("java-debug-adapter") then
       local java_debug =
-      mason_registry.get_package("java-debug-adapter")
+          mason_registry.get_package("java-debug-adapter")
 
       if java_debug:is_installed() then
         local java_debug_path =
-        java_debug:get_install_path()
+            java_debug:get_install_path()
 
         local debug_bundles = vim.fn.glob(
           java_debug_path
@@ -83,7 +83,7 @@ return {
     --------------------------------------------------------------------------
 
     local lombok_jar =
-    vim.fn.expand("$MASON/share/jdtls/lombok.jar")
+        vim.fn.expand("$MASON/share/jdtls/lombok.jar")
 
     local jdtls_path = vim.fn.exepath("jdtls")
 
@@ -96,6 +96,8 @@ return {
 
     local base_cmd = {
       jdtls_path,
+      "--jvm-arg=-Djava.import.generatesMetadataFilesAtProjectRoot=false",
+      "--jvm-arg=-Xmx8G",
     }
 
     if vim.fn.filereadable(lombok_jar) == 1 then
@@ -134,20 +136,20 @@ return {
 
       jdtls_config_dir = function(project_name)
         local config =
-        vim.fn.stdpath("data")
-        .. "/jdtls/"
-        .. project_name
-        .. "/config"
+            vim.fn.stdpath("data")
+            .. "/jdtls/"
+            .. project_name
+            .. "/config"
 
         return get_short_path(config)
       end,
 
       jdtls_workspace_dir = function(project_name)
         local workspace =
-        vim.fn.stdpath("data")
-        .. "/jdtls/"
-        .. project_name
-        .. "/workspace"
+            vim.fn.stdpath("data")
+            .. "/jdtls/"
+            .. project_name
+            .. "/workspace"
 
         return get_short_path(workspace)
       end,
@@ -156,16 +158,16 @@ return {
 
       full_cmd = function(jdtls_opts)
         local fname =
-        vim.api.nvim_buf_get_name(0)
+            vim.api.nvim_buf_get_name(0)
 
         local root_dir =
-        jdtls_opts.root_dir(fname)
+            jdtls_opts.root_dir(fname)
 
         local project_name =
-        jdtls_opts.project_name(root_dir)
+            jdtls_opts.project_name(root_dir)
 
         local cmd =
-        vim.deepcopy(jdtls_opts.cmd)
+            vim.deepcopy(jdtls_opts.cmd)
 
         if project_name then
           vim.list_extend(cmd, {
@@ -180,7 +182,6 @@ return {
         return cmd
       end,
     }
-
   end,
 
   config = function(_, opts)
@@ -198,11 +199,11 @@ return {
 
         mainClass = function()
           local file =
-          vim.fn.expand("%:p")
+              vim.fn.expand("%:p")
 
           local relative =
-          file:match("src/main/java/(.+)%.java$")
-          or file:match("src/test/java/(.+)%.java$")
+              file:match("src/main/java/(.+)%.java$")
+              or file:match("src/test/java/(.+)%.java$")
 
           if relative then
             return (relative:gsub("[/\\]", "."))
@@ -238,14 +239,14 @@ return {
 
     local function attach_jdtls()
       local fname =
-      vim.api.nvim_buf_get_name(0)
+          vim.api.nvim_buf_get_name(0)
 
       if fname == "" then
         return
       end
 
       local root_dir =
-      opts.root_dir(fname)
+          opts.root_dir(fname)
 
       if not root_dir then
         vim.notify(
@@ -261,7 +262,7 @@ return {
       ------------------------------------------------------------------------
 
       local caps =
-      require("blink.cmp").get_lsp_capabilities()
+          require("blink.cmp").get_lsp_capabilities()
 
       caps = vim.tbl_deep_extend(
         "force",
@@ -289,6 +290,18 @@ return {
       ------------------------------------------------------------------------
       -- JDTLS configuration
       ------------------------------------------------------------------------
+      local java_settings = {
+        java = {
+          import = { generatesMetadataFilesAtProjectRoot = false },
+          format = { enabled = true, comments = { enabled = false } },
+          signatureHelp = {
+            enabled = true,
+          },
+          contentProvider = {
+            preferred = "fernflower",
+          },
+        },
+      }
 
       local config = {
         cmd = opts.full_cmd(opts),
@@ -299,19 +312,10 @@ return {
 
         init_options = {
           bundles = opts.bundles,
+          settings = java_settings,
         },
+        settings = java_settings,
 
-        settings = {
-          java = {
-            signatureHelp = {
-              enabled = true,
-            },
-
-            contentProvider = {
-              preferred = "fernflower",
-            },
-          },
-        },
 
         ----------------------------------------------------------------------
         -- JDTLS attached
@@ -319,8 +323,6 @@ return {
 
         on_attach = function(client, bufnr)
           local jdtls = require("jdtls")
-
-          --------------------------------------------------------------------
           -- Stop blink from sending completionItem/resolve requests.
           -- We advertise no resolveSupport (see caps above), so resolve
           -- returns nothing useful, yet blink still fires it while
@@ -340,15 +342,15 @@ return {
           --------------------------------------------------------------------
 
           local map = function(lhs, rhs, desc)
-            vim.keymap.set( "n", lhs, rhs, { buffer = bufnr, desc = desc, })
+            vim.keymap.set("n", lhs, rhs, { buffer = bufnr, desc = desc, })
           end
 
-          map( "<leader>co", jdtls.organize_imports, "Organize Imports")
-          map( "<leader>cr", vim.lsp.buf.rename, "Rename")
-          map( "<leader>ca", vim.lsp.buf.code_action, "Code Action")
+          map("<leader>co", jdtls.organize_imports, "Organize Imports")
+          map("<leader>cr", vim.lsp.buf.rename, "Rename")
+          map("<leader>ca", vim.lsp.buf.code_action, "Code Action")
 
-          map("<leader>cdb", dap.toggle_breakpoint,"Toggle Breakpoint")
-          map("<leader>cds", dap.continue,"Start Debug")
+          map("<leader>cdb", dap.toggle_breakpoint, "Toggle Breakpoint")
+          map("<leader>cds", dap.continue, "Start Debug")
 
           -- local dapui = require("dapui")
           -- local widgets = require("dap.ui.widgets")
@@ -386,7 +388,7 @@ return {
           -- map("<leader>cdj", dap.down, "Down Stack Frame")
 
           -- Inspection
-         -- map("<leader>cdh", widgets.hover, "Hover Value")
+          -- map("<leader>cdh", widgets.hover, "Hover Value")
           -- map("<leader>cdv", function()
           --   widgets.centered_float(widgets.scopes)
           -- end, "Scopes (float)")
@@ -404,7 +406,6 @@ return {
           -- -- UI / REPL
           -- map("<leader>cdu", dapui.toggle, "Toggle DAP UI")
           -- map("<leader>cdR", dap.repl.toggle, "Toggle REPL")
-
         end,
       }
 
@@ -441,7 +442,5 @@ return {
     if vim.bo.filetype == "java" then
       attach_jdtls()
     end
-
   end,
 }
-
