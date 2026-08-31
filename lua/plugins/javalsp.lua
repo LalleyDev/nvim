@@ -1,8 +1,8 @@
 local java_filetypes = { "java" }
 
+-- Windows helper: convert long paths to short paths when possible.
+
 local function get_short_path(path)
-  -- Windows helper: convert long paths to short paths when possible.
-  -- This can help with paths that contain spaces.
   vim.fn.mkdir(path, "p")
 
   if vim.fn.has("win32") == 0 then
@@ -10,7 +10,9 @@ local function get_short_path(path)
   end
 
   local cmd = 'cmd /c for %i in ("' .. path .. '") do @echo %~si'
-  local handle = io.popen(cmd) if not handle then
+  local handle = io.popen(cmd)
+
+  if not handle then
     return path
   end
 
@@ -32,31 +34,34 @@ return {
   },
 
   opts = function()
-    local bundles = {}
+    --------------------------------------------------------------------------
+    -- Java Debug Adapter bundles
+    --------------------------------------------------------------------------
 
-    ------------------------------------------------------------------------
-    -- Java Debug Adapter
-    ------------------------------------------------------------------------
+    local bundles = {}
 
     local ok, mason_registry = pcall(require, "mason-registry")
 
-    if ok then
-      local java_debug = mason_registry.get_package("java-debug-adapter")
+    if ok and mason_registry.has_package("java-debug-adapter") then
+      local java_debug =
+      mason_registry.get_package("java-debug-adapter")
 
       if java_debug:is_installed() then
-        local java_debug_path = java_debug:get_install_path()
+        local java_debug_path =
+        java_debug:get_install_path()
 
-        local debug_bundle = vim.fn.glob(
+        local debug_bundles = vim.fn.glob(
           java_debug_path
           .. "/extension/server/com.microsoft.java.debug.plugin-*.jar",
+          true,
           true
         )
 
-        if debug_bundle ~= "" then
-          table.insert(bundles, debug_bundle)
-        else
+        vim.list_extend(bundles, debug_bundles)
+
+        if #debug_bundles == 0 then
           vim.notify(
-            "Java debug adapter JAR was not found",
+            "java-debug-adapter is installed, but its debug JAR was not found",
             vim.log.levels.WARN
           )
         end
@@ -66,17 +71,31 @@ return {
           vim.log.levels.WARN
         )
       end
+    else
+      vim.notify(
+        "Mason package java-debug-adapter was not found",
+        vim.log.levels.WARN
+      )
     end
 
-    ------------------------------------------------------------------------
+    --------------------------------------------------------------------------
     -- JDTLS command
-    ------------------------------------------------------------------------
+    --------------------------------------------------------------------------
 
     local lombok_jar =
     vim.fn.expand("$MASON/share/jdtls/lombok.jar")
 
+    local jdtls_path = vim.fn.exepath("jdtls")
+
+    if jdtls_path == "" then
+      vim.notify(
+        "jdtls executable was not found in PATH",
+        vim.log.levels.ERROR
+      )
+    end
+
     local base_cmd = {
-      vim.fn.exepath("jdtls"),
+      jdtls_path,
     }
 
     if vim.fn.filereadable(lombok_jar) == 1 then
@@ -89,9 +108,9 @@ return {
       )
     end
 
-    ------------------------------------------------------------------------
-    -- Return JDTLS options
-    ------------------------------------------------------------------------
+    --------------------------------------------------------------------------
+    -- JDTLS options
+    --------------------------------------------------------------------------
 
     return {
       bundles = bundles,
@@ -109,6 +128,8 @@ return {
         if root_dir then
           return vim.fs.basename(root_dir)
         end
+
+        return nil
       end,
 
       jdtls_config_dir = function(project_name)
@@ -134,7 +155,8 @@ return {
       cmd = base_cmd,
 
       full_cmd = function(jdtls_opts)
-        local fname = vim.api.nvim_buf_get_name(0)
+        local fname =
+        vim.api.nvim_buf_get_name(0)
 
         local root_dir =
         jdtls_opts.root_dir(fname)
@@ -142,11 +164,11 @@ return {
         local project_name =
         jdtls_opts.project_name(root_dir)
 
-        local new_cmd =
+        local cmd =
         vim.deepcopy(jdtls_opts.cmd)
 
         if project_name then
-          vim.list_extend(new_cmd, {
+          vim.list_extend(cmd, {
             "-configuration",
             jdtls_opts.jdtls_config_dir(project_name),
 
@@ -155,16 +177,16 @@ return {
           })
         end
 
-        return new_cmd
+        return cmd
       end,
     }
+
   end,
 
   config = function(_, opts)
-
-    ------------------------------------------------------------------------
-    -- Configure Java DAP
-    ------------------------------------------------------------------------
+    --------------------------------------------------------------------------
+    -- Java DAP configuration
+    --------------------------------------------------------------------------
 
     local dap = require("dap")
 
@@ -175,25 +197,17 @@ return {
         name = "Debug Current Java Class",
 
         mainClass = function()
-          local file = vim.fn.expand("%:p")
+          local file =
+          vim.fn.expand("%:p")
 
-          -- Remove the Maven source directory from the path.
           local relative =
           file:match("src/main/java/(.+)%.java$")
           or file:match("src/test/java/(.+)%.java$")
 
           if relative then
-            -- Convert:
-            --
-            -- com/example/Main
-            --
-            -- into:
-            --
-            -- com.example.Main
             return (relative:gsub("[/\\]", "."))
           end
 
-          -- Fallback to the current filename.
           return vim.fn.expand("%:t:r")
         end,
 
@@ -217,55 +231,64 @@ return {
       },
     }
 
-    ------------------------------------------------------------------------
-    -- Start / attach JDTLS
-    ------------------------------------------------------------------------
+
+    --------------------------------------------------------------------------
+    -- Start or attach JDTLS
+    --------------------------------------------------------------------------
 
     local function attach_jdtls()
-      local fname = vim.api.nvim_buf_get_name(0)
+      local fname =
+      vim.api.nvim_buf_get_name(0)
 
       if fname == "" then
         return
       end
 
-      local root_dir = opts.root_dir(fname)
+      local root_dir =
+      opts.root_dir(fname)
 
       if not root_dir then
         vim.notify(
           "Could not find Java project root",
           vim.log.levels.WARN
         )
+
         return
       end
 
-      ----------------------------------------------------------------------
+      ------------------------------------------------------------------------
       -- Blink capabilities
-      ----------------------------------------------------------------------
+      ------------------------------------------------------------------------
 
       local caps =
       require("blink.cmp").get_lsp_capabilities()
 
-      caps = vim.tbl_deep_extend("force", caps, {
-        textDocument = {
-          completion = {
-            completionItem = {
-              snippetSupport = false,
-              labelDetailsSupport = false,
-              deprecatedSupport = true,
-              preselectSupport = false,
-              insertReplaceSupport = false,
+      caps = vim.tbl_deep_extend(
+        "force",
+        caps,
+        {
+          textDocument = {
+            completion = {
+              completionItem = {
+                snippetSupport = false,
+                labelDetailsSupport = false,
+                deprecatedSupport = true,
+                preselectSupport = false,
+                insertReplaceSupport = false,
+              },
             },
           },
-        },
-      })
+        }
+      )
 
-      -- Remove resolve support to avoid the JDTLS completion issue you were
-      -- working around.
-      caps.textDocument.completion.completionItem.resolveSupport = nil
+      -- Remove resolve support to avoid the JDTLS completion issue.
+      caps.textDocument.completion
+      .completionItem
+      .resolveSupport = nil
 
-      ----------------------------------------------------------------------
+      ------------------------------------------------------------------------
       -- JDTLS configuration
-      ----------------------------------------------------------------------
+      ------------------------------------------------------------------------
 
       local config = {
         cmd = opts.full_cmd(opts),
@@ -290,55 +313,120 @@ return {
           },
         },
 
-        --------------------------------------------------------------------
+        ----------------------------------------------------------------------
         -- JDTLS attached
-        --------------------------------------------------------------------
+        ----------------------------------------------------------------------
 
         on_attach = function(_, bufnr)
-          ------------------------------------------------------------------
-          -- Setup Java debugger
-          ------------------------------------------------------------------
-
           local jdtls = require("jdtls")
 
-          jdtls.setup_dap({
-            hotcodereplace = "auto",
-          })
-
-          ------------------------------------------------------------------
-          -- Keymaps
-          ------------------------------------------------------------------
+          --------------------------------------------------------------------
+          -- Java keymaps
+          --------------------------------------------------------------------
 
           local map = function(lhs, rhs, desc)
             vim.keymap.set( "n", lhs, rhs, { buffer = bufnr, desc = desc, })
           end
 
           map( "<leader>co", jdtls.organize_imports, "Organize Imports")
-
           map( "<leader>cr", vim.lsp.buf.rename, "Rename")
-
           map( "<leader>ca", vim.lsp.buf.code_action, "Code Action")
+
+          map("<leader>cdb", dap.toggle_breakpoint,"Toggle Breakpoint")
+          map("<leader>cds", dap.continue,"Start Debug")
+
+          -- local dapui = require("dapui")
+          -- local widgets = require("dap.ui.widgets")
+
+          -- Session control
+          -- map("<leader>cdc", dap.continue, "Continue / Start")
+          -- map("<leader>cdr", dap.restart, "Restart Session")
+          -- map("<leader>cdl", dap.run_last, "Run Last Config")
+          -- map("<leader>cdx", dap.terminate, "Terminate Session")
+          -- map("<leader>cdd", dap.disconnect, "Disconnect")
+          -- map("<leader>cdp", dap.pause, "Pause Thread")
+          --
+          -- -- Stepping
+          -- map("<leader>cdo", dap.step_over, "Step Over")
+          -- map("<leader>cdi", dap.step_into, "Step Into")
+          -- map("<leader>cdO", dap.step_out, "Step Out")
+          -- map("<leader>cdC", dap.run_to_cursor, "Run to Cursor")
+          -- map("<leader>cdg", dap.goto_, "Jump to Line (skip execution)")
+          --
+          -- -- Breakpoints
+          -- map("<leader>cdb", dap.toggle_breakpoint, "Toggle Breakpoint")
+          -- map("<leader>cdB", function()
+          --   dap.set_breakpoint(vim.fn.input("Breakpoint condition: "))
+          -- end, "Conditional Breakpoint")
+          -- map("<leader>cdL", function()
+          --   dap.set_breakpoint(nil, nil, vim.fn.input("Log message: "))
+          -- end, "Log Point")
+          -- map("<leader>cdE", function()
+          --   dap.set_exception_breakpoints({ "all" })
+          -- end, "Break on Exceptions")
+          -- map("<leader>cdX", dap.clear_breakpoints, "Clear All Breakpoints")
+          --
+          -- -- Stack navigation
+          -- map("<leader>cdk", dap.up, "Up Stack Frame")
+          -- map("<leader>cdj", dap.down, "Down Stack Frame")
+
+          -- Inspection
+         -- map("<leader>cdh", widgets.hover, "Hover Value")
+          -- map("<leader>cdv", function()
+          --   widgets.centered_float(widgets.scopes)
+          -- end, "Scopes (float)")
+          -- map("<leader>cdf", function()
+          --   widgets.centered_float(widgets.frames)
+          -- end, "Frames (float)")
+          -- map("<leader>cdt", function()
+          --   widgets.centered_float(widgets.threads)
+          -- end, "Threads (float)")
+          -- map("<leader>cde", dapui.eval, "Eval Expression")
+          -- map("<leader>cdE", function()
+          --   dapui.eval(vim.fn.input("Expression: "))
+          -- end, "Eval Input")
+          --
+          -- -- UI / REPL
+          -- map("<leader>cdu", dapui.toggle, "Toggle DAP UI")
+          -- map("<leader>cdR", dap.repl.toggle, "Toggle REPL")
+
         end,
       }
 
-      require("jdtls").start_or_attach(config)
+      local jdtls = require("jdtls")
+
+      jdtls.start_or_attach(config)
+
+      ------------------------------------------------------------------------
+      -- Configure DAP after JDTLS has started.
+      ------------------------------------------------------------------------
+
+      vim.schedule(function()
+        jdtls.setup_dap({
+          hotcodereplace = "auto",
+        })
+      end)
     end
 
-    ------------------------------------------------------------------------
-    -- Start JDTLS when opening Java files
-    ------------------------------------------------------------------------
+
+
+    --------------------------------------------------------------------------
+    -- Attach when opening Java files
+    --------------------------------------------------------------------------
 
     vim.api.nvim_create_autocmd("FileType", {
       pattern = java_filetypes,
       callback = attach_jdtls,
     })
 
-    ------------------------------------------------------------------------
-    -- If we're already in a Java file
-    ------------------------------------------------------------------------
+    --------------------------------------------------------------------------
+    -- Attach immediately if already in a Java file
+    --------------------------------------------------------------------------
 
     if vim.bo.filetype == "java" then
       attach_jdtls()
     end
+
   end,
 }
+

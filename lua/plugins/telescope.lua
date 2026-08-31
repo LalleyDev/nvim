@@ -1,44 +1,50 @@
+local map = function(mode, keymap, func, desc)
+  vim.keymap.set(mode, keymap, func, { desc = desc, })
+end
+
+
 return {
   {
-    'nvim-telescope/telescope.nvim', version = '*',
+    "nvim-telescope/telescope.nvim",
+    version = "*",
     dependencies = {
-      'nvim-lua/plenary.nvim',
+      "nvim-lua/plenary.nvim",
       -- optional but recommended
       -- change make to the desired build
-      { 'nvim-telescope/telescope-fzf-native.nvim', build = 'make' },
+      { "nvim-telescope/telescope-fzf-native.nvim", build = "make" },
     },
     config = function()
-      require('telescope').setup {
+      require("telescope").setup {
         extensions = {
           fzf = {}
         }
       }
       local builtin = require("telescope.builtin")
 
-      vim.keymap.set('n','<space>fd', builtin.find_files,{})
-      vim.keymap.set('n','<leader>fg', builtin.live_grep,{})
-      vim.keymap.set('n','<leader>fh', builtin.help_tags,{})
-      vim.keymap.set('n','<leader>fv', builtin.treesitter,{})
-      vim.keymap.set('n','<leader>fb', builtin.current_buffer_fuzzy_find,{})
+      map("n", "<space>fd", builtin.find_files, "Find Files")
+      map("n", "<leader>fg", builtin.live_grep, "Grep Folder")
+      map("n", "<leader>fh", builtin.help_tags, "Find Help")
+      map("n", "<leader>fv", builtin.treesitter, "Find In Treesitter")
+      map("n", "<leader>fb", builtin.current_buffer_fuzzy_find, "Find In Current Buffer")
 
-      vim.keymap.set('n','<space>en', function()
-        local opts = require('telescope.themes').get_ivy({
+      map("n", "<space>fc", function()
+        local opts = require("telescope.themes").get_ivy({
           wd = vim.fn.stdpath("config")
         })
         builtin.find_files(opts)
-      end)
+      end, "Find Config")
 
-      vim.keymap.set('n','<space>ep', function()
-        local opts = require('telescope.themes').get_ivy({
-          cwd = vim.fs.joinpath(vim.fn.stdpath("data"), "lazy")
-        })
-        builtin.find_files(opts)
-      end)
-      vim.keymap.set('n','<space>gs', function()
-        local opts = require('telescope.themes').get_dropdown({
-        })
-        builtin.git_status(opts)
-      end)
+      -- map("n", "<space>ft", function()
+      --   local opts = require("telescope.themes").get_ivy({
+      --     cwd = vim.fs.joinpath(vim.fn.stdpath("data"), "lazy")
+      --   })
+      --   builtin.find_files(opts)
+      -- end, "Find Themes")
+      --
+      -- map("n", "<space>fts", function()
+      --   local opts = require("telescope.themes").get_dropdown({})
+      --   builtin.git_status(opts)
+      -- end, "Find Themes")
     end
   },
   {
