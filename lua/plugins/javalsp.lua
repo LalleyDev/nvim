@@ -117,7 +117,8 @@ return {
 
     -- Lombok javaagent. The jar lives under the Mason install dir, which on
     -- Windows sits beneath the user profile and may contain a space.
-    local lombok_jar = vim.fn.expand("$MASON/share/jdtls/lombok.jar")
+    local mason_root = vim.fn.stdpath("data") .. "/mason"
+    local lombok_jar = mason_root .. "/share/jdtls/lombok.jar"
     if vim.fn.filereadable(lombok_jar) == 1 then
       local lombok_short = to_short(lombok_jar)
       if not lombok_short then
@@ -139,17 +140,25 @@ return {
     if ok and mason_registry.has_package("java-test") then
       local java_test = mason_registry.get_package("java-test")
       if java_test:is_installed() then
-        local java_test_path = vim.fn.expand("$MASON/packages/java-test")
+        local java_test_path = java_test:get_install_path()
         local test_bundles = vim.fn.glob(
           java_test_path .. "/extension/server/*.jar",
           true,
           true
         )
         -- The runner jar ships with the extension but must not be loaded
-        -- as a bundle; including it breaks jdtls startup.
+        -- as a bundle; including it breaks jdtls startup. jacocoagent.jar
+        -- is a javaagent, not an OSGi bundle, and must be excluded too --
+        -- but org.jacoco.core is a real bundle the test plugin requires,
+        -- so only the agent jar is filtered, not every jar matching
+        -- "jacoco". The bundled org.objectweb.asm* jars duplicate what
+        -- jdtls's own plugins dir already provides at the same version;
+        -- loading both risks OSGi installing the same symbolic-name+version
+        -- bundle twice.
         test_bundles = vim.tbl_filter(function(jar)
           return not jar:match("com%.microsoft%.java%.test%.runner%-jar%-with%-dependencies%.jar$")
-              and not jar:match("jacoco.*%.jar$")
+              and not jar:match("jacocoagent%.jar$")
+              and not jar:match("org%.objectweb%.asm.*%.jar$")
         end, test_bundles)
         vim.list_extend(bundles, test_bundles)
         if #test_bundles == 0 then
@@ -409,9 +418,39 @@ return {
           map("<leader>cdR", dap.repl.toggle, "Toggle REPL")
 
           -- Testing
-          map("<leader>ctc", jdtls.test_class, "Test Class")
-          map("<leader>ctm", jdtls.test_nearest_method, "Test Nearest Method")
-          map("<leader>ctp", jdtls.pick_test, "Pick Test")
+          -- jdtls streams pass/fail results into the dap-repl buffer
+          -- asynchronously, after the short-lived test-runner DAP session
+          -- has already ended -- which is also when dapui.close() (see
+          -- dap.lua) tears down its embedded repl panel. Opening the repl
+          -- directly in its own bottom split, outside dapui's lifecycle,
+          -- keeps it visible for the results.
+          local function open_repl_bottom()
+            dap.repl.open({ height = 15 }, "botright split")
+          end
+
+          map("<leader>ctc", function()
+            open_repl_bottom()
+            jdtls.test_class()
+          end, "Test Class")
+          map("<leader>ctm", function()
+            open_repl_bottom()
+            jdtls.test_nearest_method()
+          end, "Test Nearest Method")
+          map("<leader>ctp", function()
+            open_repl_bottom()
+            jdtls.pick_test()
+          end, "Pick Test")
+
+          -- jdtls's inline ✓/✗ marks and diagnostics reflect the *last*
+          -- test run, not live compiler state -- it only clears them at
+          -- the start of the next run (jdtls/junit.lua), so a stale ✗
+          -- stays inline even after the underlying code is fixed and
+          -- saved until you run the test again. This clears them by hand.
+          map("<leader>ctx", function()
+            local junit_ns = vim.api.nvim_create_namespace("junit")
+            vim.api.nvim_buf_clear_namespace(bufnr, junit_ns, 0, -1)
+            vim.diagnostic.reset(junit_ns, bufnr)
+          end, "Clear Test Results")
         end,
       }
 
