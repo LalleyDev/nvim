@@ -15,6 +15,11 @@ return {
         ensure_installed = {
           "lua_ls",
           "jdtls",
+          "html",
+          "cssls",
+          "tailwindcss",
+          "jsonls",
+          "eslint",
         },
         -- Java is driven exclusively by nvim-jdtls (see javalsp.lua).
         -- Exclude jdtls here so mason-lspconfig's automatic_enable does
@@ -29,7 +34,7 @@ return {
   {
     "neovim/nvim-lspconfig",
     dependencies = {
-      'saghen/blink.cmp',
+      "saghen/blink.cmp",
       {
         "folke/lazydev.nvim",
         ft = "lua", -- only load on lua files
@@ -45,7 +50,7 @@ return {
     config = function()
       local capabilities = require("blink.cmp").get_lsp_capabilities()
 
-      vim.lsp.config('*', {
+      vim.lsp.config("*", {
         capabilities = capabilities
       })
 
@@ -68,16 +73,36 @@ return {
       -- NOTE: jdtls is intentionally NOT enabled here. It is started by
       -- nvim-jdtls in javalsp.lua. Enabling it here too would attach a
       -- second Java client and cause completion/diagnostic desyncs.
-      vim.lsp.enable('lua_ls')
+      vim.lsp.enable("lua_ls")
+      vim.lsp.enable("tsc")
+      vim.lsp.enable("html")
+      vim.lsp.enable("cssls")
+      vim.lsp.enable("tailwindcss")
+      vim.lsp.enable("jsonls")
+      vim.lsp.enable("eslint")
       -- lsp config keybinds
-      vim.keymap.set('n', 'K', vim.lsp.buf.hover, {})
-      vim.keymap.set('n', 'gd', vim.lsp.buf.definition, {})
-      vim.keymap.set({ 'n', 'v' }, '<leader>ca', vim.lsp.buf.code_action, {})
+      vim.keymap.set("n", "K", vim.lsp.buf.hover, {})
+      vim.keymap.set("n", "gd", vim.lsp.buf.definition, {})
+      vim.keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, {})
 
+      -- html/cssls/jsonls/tsc can all advertise their own formattingProvider,
+      -- which would race prettier (via none-ls) for the same edit. Pin
+      -- formatting to a single client per filetype so saves stay deterministic.
       vim.api.nvim_create_autocmd("BufWritePre", {
-        pattern = "*.lua",
+        pattern = {
+          "*.lua",
+          "*.js", "*.jsx", "*.ts", "*.tsx",
+          "*.css", "*.json",
+        },
         callback = function(args)
-          vim.lsp.buf.format({ bufnr = args.buf, async = false })
+          local is_lua = vim.bo[args.buf].filetype == "lua"
+          vim.lsp.buf.format({
+            bufnr = args.buf,
+            async = false,
+            filter = function(client)
+              return is_lua and client.name == "lua_ls" or client.name == "null-ls"
+            end,
+          })
         end,
       })
     end

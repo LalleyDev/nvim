@@ -4,6 +4,11 @@
 -- vim.cmd("set shiftwidth=4")
 -- vim.cmd("set relativenumber")
 
+-- nvim-treesitter (main) compiles parsers via `tree-sitter build`, which
+-- picks its C compiler from $CC. Prefer zig: a single-binary toolchain
+-- that needs no MSVC/Windows SDK.
+vim.env.CC = "zig cc"
+
 -- shortcuts
 -- quickfix movement
 vim.keymap.set("n","<M-j>","<cmd>cnext<CR>")

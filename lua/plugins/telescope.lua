@@ -29,7 +29,7 @@ return {
 
       map("n", "<space>fc", function()
         local opts = require("telescope.themes").get_ivy({
-          wd = vim.fn.stdpath("config")
+          cwd = vim.fn.stdpath("config")
         })
         builtin.find_files(opts)
       end, "Find Config")
