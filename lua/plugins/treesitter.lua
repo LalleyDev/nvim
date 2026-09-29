@@ -34,10 +34,23 @@ return {
     -- filetype here (`indentexpr`), and custom Java indentation already
     -- lives in ftplugins, which treesitter indent would fight.
     vim.api.nvim_create_autocmd("FileType", {
+      group = vim.api.nvim_create_augroup("ts_highlight", { clear = true }),
       callback = function(args)
         local lang = vim.treesitter.language.get_lang(args.match) or args.match
         if vim.tbl_contains(require("nvim-treesitter").get_installed("parsers"), lang) then
-          vim.treesitter.start()
+          -- `start` asserts on the parser, so a parser that is present but
+          -- fails to load would otherwise throw on every matching buffer.
+          -- Report rather than swallow: a silent failure here is
+          -- indistinguishable from healthy treesitter in :checkhealth.
+          local ok, err = pcall(vim.treesitter.start, args.buf, lang)
+          if not ok then
+            vim.schedule(function()
+              vim.notify(
+                ("treesitter.start failed for %s (buf %d): %s"):format(lang, args.buf, err),
+                vim.log.levels.ERROR
+              )
+            end)
+          end
         end
       end,
     })

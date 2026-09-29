@@ -9,6 +9,10 @@ return {
   {
     -- ensures that lsps are installed
     "williamboman/mason-lspconfig.nvim",
+    -- mason-lspconfig warns and skips ensure_installed/automatic_enable if
+    -- mason.setup() has not run yet; declare the edge instead of relying on
+    -- lazy.nvim's spec ordering.
+    dependencies = { "williamboman/mason.nvim" },
     config = function()
       require("mason-lspconfig").setup({
         -- add the language server here first
@@ -89,6 +93,7 @@ return {
       -- which would race prettier (via none-ls) for the same edit. Pin
       -- formatting to a single client per filetype so saves stay deterministic.
       vim.api.nvim_create_autocmd("BufWritePre", {
+        group = vim.api.nvim_create_augroup("lsp_format_on_save", { clear = true }),
         pattern = {
           "*.lua",
           "*.js", "*.jsx", "*.ts", "*.tsx",
@@ -100,7 +105,10 @@ return {
             bufnr = args.buf,
             async = false,
             filter = function(client)
-              return is_lua and client.name == "lua_ls" or client.name == "null-ls"
+              if is_lua then
+                return client.name == "lua_ls"
+              end
+              return client.name == "null-ls"
             end,
           })
         end,

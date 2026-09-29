@@ -50,6 +50,99 @@ local function get_short_path(path)
   return short
 end
 ;
+--------------------------------------------------------------------------------
+-- JDTLS working-copy resync
+--------------------------------------------------------------------------------
+-- JDTLS's in-memory AST can stop reconciling while its document text stays
+-- current. Completions and hovers then resolve against whatever the file said
+-- when reconcile last ran -- e.g. `System.` proposing a local variable that
+-- used to live at that position. Nothing errors: the client is healthy, the
+-- document version still matches b:changedtick, and :checkhealth is clean.
+-- The server's own log is the tell -- it stops emitting "Reconciled".
+--
+-- Re-sending didOpen rebuilds the working copy. Much cheaper than restarting
+-- the client, and it keeps unsaved edits.
+local function resync_jdtls(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  local clients = vim.lsp.get_clients({ bufnr = bufnr, name = "jdtls" })
+  if #clients == 0 then
+    vim.notify("No jdtls client attached to this buffer", vim.log.levels.WARN)
+    return
+  end
+  for _, client in ipairs(clients) do
+    vim.lsp.buf_detach_client(bufnr, client.id)
+    vim.schedule(function()
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.lsp.buf_attach_client(bufnr, client.id)
+      end
+    end)
+  end
+  vim.notify("jdtls: resynced working copy", vim.log.levels.INFO)
+end
+
+-- Watchdog for the freeze above. JDTLS republishes diagnostics after every
+-- reconcile, so "buffer kept changing but no diagnostics arrived for it" is a
+-- good proxy for "reconcile has stopped". Deliberately conservative: it only
+-- checks once the buffer has gone quiet, warns once per episode, and re-arms
+-- as soon as diagnostics start flowing again.
+local FREEZE_IDLE_MS = 6000
+
+local function watch_for_frozen_ast(bufnr)
+  local state = {
+    tick_at_last_diagnostic = vim.api.nvim_buf_get_changedtick(bufnr),
+    warned = false,
+  }
+  local timer
+  local group = vim.api.nvim_create_augroup("jdtls_freeze_watch_" .. bufnr,
+    { clear = true })
+
+  vim.api.nvim_create_autocmd("DiagnosticChanged", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      state.tick_at_last_diagnostic = vim.api.nvim_buf_get_changedtick(bufnr)
+      state.warned = false
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      if timer then
+        timer:stop()
+      end
+      timer = vim.defer_fn(function()
+        if not vim.api.nvim_buf_is_valid(bufnr) or state.warned then
+          return
+        end
+        local tick = vim.api.nvim_buf_get_changedtick(bufnr)
+        if tick > state.tick_at_last_diagnostic then
+          state.warned = true
+          vim.notify(
+            ("jdtls AST looks frozen: no diagnostics since changedtick %d (now %d).\n")
+            :format(state.tick_at_last_diagnostic, tick)
+            .. "Completions and hovers are resolving against stale text -- "
+            .. "<leader>cR to resync.",
+            vim.log.levels.WARN,
+            { title = "jdtls" }
+          )
+        end
+      end, FREEZE_IDLE_MS)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ "LspDetach", "BufDelete", "BufWipeout" }, {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      if timer then
+        timer:stop()
+      end
+    end,
+  })
+end
+
 return {
   "mfussenegger/nvim-jdtls",
   ft = java_filetypes,
@@ -327,6 +420,18 @@ return {
         cmd = opts.full_cmd(opts),
         root_dir = root_dir,
         capabilities = caps,
+
+        -- jdtls's copy of the buffer silently drifts out of sync under
+        -- incremental sync while editing: nvim's document version keeps
+        -- matching b:changedtick, so nothing errors, but the server resolves
+        -- every request against stale text. Symptoms are completion at the
+        -- wrong position (`System.` proposing local variables) and semantic
+        -- tokens landing on the wrong ranges, which reads as "highlighting is
+        -- broken". Verified by hand: forcing a full re-sync on a drifted
+        -- buffer turned 1 bogus proposal into the correct 34 System members.
+        -- Full sync resends the whole buffer per change -- negligible for
+        -- source files, and it removes the drift entirely.
+        flags = { allow_incremental_sync = false },
         init_options = {
           bundles = opts.bundles,
           settings = java_settings,
@@ -359,10 +464,16 @@ return {
           local dapui = require("dapui")
           local widgets = require("dap.ui.widgets")
 
+          -- Warn instead of silently serving stale completions.
+          watch_for_frozen_ast(bufnr)
+
           -- LSP
           map("<leader>co", jdtls.organize_imports, "Organize Imports")
           map("<leader>cr", vim.lsp.buf.rename, "Rename")
           map("<leader>ca", vim.lsp.buf.code_action, "Code Action")
+          map("<leader>cR", function()
+            resync_jdtls(bufnr)
+          end, "Resync jdtls working copy (fix stale completions)")
 
           -- Session control
           map("<leader>cds", dap.continue, "Start / Continue")
@@ -471,6 +582,7 @@ return {
     -- Attach when opening Java files
     ----------------------------------------------------------------------------
     vim.api.nvim_create_autocmd("FileType", {
+      group = vim.api.nvim_create_augroup("jdtls_attach", { clear = true }),
       pattern = java_filetypes,
       callback = attach_jdtls,
     })
