@@ -1,597 +1,302 @@
--- lua/plugins/java.lua
+-- Java via nvim-jdtls, modeled on LazyVim's java extra:
+-- https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/plugins/extras/lang/java.lua
+--
+-- Differences from the previous setup, which let jdtls drift out of sync:
+--   * plain blink.cmp capabilities (no stripped snippet/resolve/insertReplace
+--     support and no forced resolveProvider = false)
+--   * default incremental sync, no detach/re-attach resync hacks
+--   * bundles found through $MASON/share, like LazyVim
+--   * keymaps and dap set up on LspAttach, once jdtls is actually attached
 local java_filetypes = { "java" }
 
---------------------------------------------------------------------------------
--- Windows helpers
---------------------------------------------------------------------------------
--- Convert a path to its 8.3 short form. Returns nil if conversion is not
--- possible (8dot3name disabled on the volume, popen failure, etc).
--- Does NOT create the path, so this is safe to call on files.
-local function to_short(path)
-  if vim.fn.has("win32") == 0 then
-    return path
-  end
-  -- Nothing to do if there is no space to escape.
-  if not path:find(" ", 1, true) then
-    return path
-  end
+-- installed by mason in addition to jdtls (which mason-lspconfig installs)
+local mason_packages = { "jdtls", "java-debug-adapter", "java-test" }
 
-  local handle = io.popen('cmd /c for %i in ("' .. path .. '") do @echo %~si')
-  if not handle then
-    return nil
-  end
-  local result = handle:read("*a")
-  handle:close()
+-- Same as vim.lsp.config.jdtls.root_markers from nvim-lspconfig: the first
+-- list (multi-module / git root) wins over the second (single-module).
+local root_markers = {
+  { "mvnw", "gradlew", "settings.gradle", "settings.gradle.kts", ".git" },
+  { "build.xml", "pom.xml", "build.gradle", "build.gradle.kts" },
+}
 
-  -- Trim leading/trailing whitespace only. Stripping *all* whitespace would
-  -- silently corrupt the path when 8.3 conversion fails and cmd echoes the
-  -- original long path back.
-  local short = result:gsub("^%s+", ""):gsub("%s+$", "")
-  if short == "" or short:find(" ", 1, true) then
-    return nil
-  end
-  return short
+local function ensure_mason_packages()
+  local registry = require("mason-registry")
+  registry.refresh(function()
+    for _, name in ipairs(mason_packages) do
+      local ok, pkg = pcall(registry.get_package, name)
+      if ok and not pkg:is_installed() and not pkg:is_installing() then
+        vim.notify("Installing " .. name .. " (restart nvim when it finishes)", vim.log.levels.INFO)
+        pkg:install()
+      end
+    end
+  end)
 end
 
--- Directory variant: ensures the directory exists first, since 8.3 names are
--- only assigned to paths that actually exist on disk.
-local function get_short_path(path)
-  vim.fn.mkdir(path, "p")
-  local short = to_short(path)
-  if not short then
-    vim.notify(
-      "Could not get an 8.3 short path for:\n"
-      .. path
-      .. "\njdtls may fail. Check with: fsutil 8dot3name query C:",
-      vim.log.levels.WARN
-    )
-    return path
+-- Debug + test jars jdtls loads as plugins. The test runner jar and jacoco
+-- agent ship in the same folder but are not bundles (see the nvim-jdtls README).
+local function get_bundles()
+  local registry = require("mason-registry")
+  local bundles = {} ---@type string[]
+  if registry.is_installed("java-debug-adapter") then
+    bundles = vim.fn.glob("$MASON/share/java-debug-adapter/com.microsoft.java.debug.plugin-*.jar", false, true)
+    if registry.is_installed("java-test") then
+      local test_jars = vim.fn.glob("$MASON/share/java-test/*.jar", false, true)
+      vim.list_extend(
+        bundles,
+        vim.tbl_filter(function(jar)
+          return not jar:match("com%.microsoft%.java%.test%.runner%-jar%-with%-dependencies%.jar$")
+            and not jar:match("jacocoagent%.jar$")
+        end, test_jars)
+      )
+    end
   end
-  return short
+  return bundles
 end
-;
---------------------------------------------------------------------------------
--- JDTLS working-copy resync
---------------------------------------------------------------------------------
--- JDTLS's in-memory AST can stop reconciling while its document text stays
--- current. Completions and hovers then resolve against whatever the file said
--- when reconcile last ran -- e.g. `System.` proposing a local variable that
--- used to live at that position. Nothing errors: the client is healthy, the
--- document version still matches b:changedtick, and :checkhealth is clean.
--- The server's own log is the tell -- it stops emitting "Reconciled".
---
--- Re-sending didOpen rebuilds the working copy. Much cheaper than restarting
--- the client, and it keeps unsaved edits.
-local function resync_jdtls(bufnr)
-  bufnr = bufnr or vim.api.nvim_get_current_buf()
-  local clients = vim.lsp.get_clients({ bufnr = bufnr, name = "jdtls" })
-  if #clients == 0 then
-    vim.notify("No jdtls client attached to this buffer", vim.log.levels.WARN)
-    return
+
+local function set_keymaps(bufnr)
+  local jdtls = require("jdtls")
+  local dap = require("dap")
+
+  local map = function(lhs, rhs, desc, mode)
+    vim.keymap.set(mode or "n", lhs, rhs, { buffer = bufnr, desc = desc })
   end
-  for _, client in ipairs(clients) do
-    vim.lsp.buf_detach_client(bufnr, client.id)
-    vim.schedule(function()
-      if vim.api.nvim_buf_is_valid(bufnr) then
-        vim.lsp.buf_attach_client(bufnr, client.id)
+
+  -- LSP
+  map("<leader>co", jdtls.organize_imports, "Organize Imports")
+  map("<leader>cr", vim.lsp.buf.rename, "Rename")
+  map("<leader>ca", vim.lsp.buf.code_action, "Code Action", { "n", "v" })
+  map("<leader>cgs", jdtls.super_implementation, "Goto Super")
+
+  -- Refactoring (from LazyVim)
+  map("<leader>cxv", jdtls.extract_variable_all, "Extract Variable")
+  map("<leader>cxc", jdtls.extract_constant, "Extract Constant")
+  map("<leader>cxm", [[<ESC><CMD>lua require('jdtls').extract_method(true)<CR>]], "Extract Method", "x")
+  map("<leader>cxv", [[<ESC><CMD>lua require('jdtls').extract_variable_all(true)<CR>]], "Extract Variable", "x")
+  map("<leader>cxc", [[<ESC><CMD>lua require('jdtls').extract_constant(true)<CR>]], "Extract Constant", "x")
+
+  -- Session control
+  map("<leader>cds", dap.continue, "Start / Continue")
+  map("<leader>cdr", dap.restart, "Restart Session")
+  map("<leader>cdl", dap.run_last, "Run Last Config")
+  map("<leader>cdx", dap.terminate, "Terminate Session")
+  map("<leader>cdd", dap.disconnect, "Disconnect")
+  map("<leader>cdp", dap.pause, "Pause Thread")
+
+  -- Stepping
+  map("<leader>cdo", dap.step_over, "Step Over")
+  map("<leader>cdi", dap.step_into, "Step Into")
+  map("<leader>cdO", dap.step_out, "Step Out")
+  map("<leader>cdC", dap.run_to_cursor, "Run to Cursor")
+
+  -- Breakpoints
+  map("<leader>cdb", dap.toggle_breakpoint, "Toggle Breakpoint")
+  map("<leader>cdB", function()
+    vim.ui.input({ prompt = "Breakpoint condition: " }, function(cond)
+      if cond then
+        dap.set_breakpoint(cond)
       end
     end)
+  end, "Conditional Breakpoint")
+  map("<leader>cdL", function()
+    vim.ui.input({ prompt = "Log message: " }, function(msg)
+      if msg then
+        dap.set_breakpoint(nil, nil, msg)
+      end
+    end)
+  end, "Log Point")
+  map("<leader>cdX", dap.clear_breakpoints, "Clear All Breakpoints")
+
+  -- Stack navigation
+  map("<leader>cdk", dap.up, "Up Stack Frame")
+  map("<leader>cdj", dap.down, "Down Stack Frame")
+
+  -- Inspection
+  local widgets = require("dap.ui.widgets")
+  map("<leader>cdh", widgets.hover, "Hover Value")
+  map("<leader>cdv", function() widgets.centered_float(widgets.scopes) end, "Scopes (float)")
+  map("<leader>cdf", function() widgets.centered_float(widgets.frames) end, "Frames (float)")
+  map("<leader>cdt", function() widgets.centered_float(widgets.threads) end, "Threads (float)")
+  map("<leader>cde", function() require("dapui").eval() end, "Eval Expression")
+
+  -- UI / REPL
+  map("<leader>cdu", function() require("dapui").toggle() end, "Toggle DAP UI")
+  map("<leader>cdR", dap.repl.toggle, "Toggle REPL")
+
+  -- Testing
+  -- jdtls streams pass/fail results into the dap-repl buffer
+  -- asynchronously, after the short-lived test-runner DAP session
+  -- has already ended -- which is also when dapui.close() (see
+  -- dap.lua) tears down its embedded repl panel. Opening the repl
+  -- directly in its own bottom split, outside dapui's lifecycle,
+  -- keeps it visible for the results.
+  local function open_repl_bottom()
+    dap.repl.open({ height = 15 }, "botright split")
   end
-  vim.notify("jdtls: resynced working copy", vim.log.levels.INFO)
-end
 
--- Watchdog for the freeze above. JDTLS republishes diagnostics after every
--- reconcile, so "buffer kept changing but no diagnostics arrived for it" is a
--- good proxy for "reconcile has stopped". Deliberately conservative: it only
--- checks once the buffer has gone quiet, warns once per episode, and re-arms
--- as soon as diagnostics start flowing again.
-local FREEZE_IDLE_MS = 6000
+  map("<leader>ctc", function()
+    open_repl_bottom()
+    jdtls.test_class()
+  end, "Test Class")
+  map("<leader>ctm", function()
+    open_repl_bottom()
+    jdtls.test_nearest_method()
+  end, "Test Nearest Method")
+  map("<leader>ctp", function()
+    open_repl_bottom()
+    jdtls.pick_test()
+  end, "Pick Test")
 
-local function watch_for_frozen_ast(bufnr)
-  local state = {
-    tick_at_last_diagnostic = vim.api.nvim_buf_get_changedtick(bufnr),
-    warned = false,
-  }
-  local timer
-  local group = vim.api.nvim_create_augroup("jdtls_freeze_watch_" .. bufnr,
-    { clear = true })
-
-  vim.api.nvim_create_autocmd("DiagnosticChanged", {
-    group = group,
-    buffer = bufnr,
-    callback = function()
-      state.tick_at_last_diagnostic = vim.api.nvim_buf_get_changedtick(bufnr)
-      state.warned = false
-    end,
-  })
-
-  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
-    group = group,
-    buffer = bufnr,
-    callback = function()
-      if timer then
-        timer:stop()
-      end
-      timer = vim.defer_fn(function()
-        if not vim.api.nvim_buf_is_valid(bufnr) or state.warned then
-          return
-        end
-        local tick = vim.api.nvim_buf_get_changedtick(bufnr)
-        if tick > state.tick_at_last_diagnostic then
-          state.warned = true
-          vim.notify(
-            ("jdtls AST looks frozen: no diagnostics since changedtick %d (now %d).\n")
-            :format(state.tick_at_last_diagnostic, tick)
-            .. "Completions and hovers are resolving against stale text -- "
-            .. "<leader>cR to resync.",
-            vim.log.levels.WARN,
-            { title = "jdtls" }
-          )
-        end
-      end, FREEZE_IDLE_MS)
-    end,
-  })
-
-  vim.api.nvim_create_autocmd({ "LspDetach", "BufDelete", "BufWipeout" }, {
-    group = group,
-    buffer = bufnr,
-    callback = function()
-      if timer then
-        timer:stop()
-      end
-    end,
-  })
+  -- jdtls's inline ✓/✗ marks and diagnostics reflect the *last*
+  -- test run, not live compiler state -- it only clears them at
+  -- the start of the next run (jdtls/junit.lua), so a stale ✗
+  -- stays inline even after the underlying code is fixed and
+  -- saved until you run the test again. This clears them by hand.
+  map("<leader>ctx", function()
+    local junit_ns = vim.api.nvim_create_namespace("junit")
+    vim.api.nvim_buf_clear_namespace(bufnr, junit_ns, 0, -1)
+    vim.diagnostic.reset(junit_ns, bufnr)
+  end, "Clear Test Results")
 end
 
 return {
   "mfussenegger/nvim-jdtls",
   ft = java_filetypes,
   dependencies = {
-    "mfussenegger/nvim-dap",
     "williamboman/mason.nvim",
+    "saghen/blink.cmp",
+    "mfussenegger/nvim-dap",
     "rcarriga/nvim-dap-ui",
-    "nvim-neotest/nvim-nio",
   },
   opts = function()
-    ----------------------------------------------------------------------------
-    -- Java Debug Adapter bundles
-    ----------------------------------------------------------------------------
-    local bundles = {}
-    local ok, mason_registry = pcall(require, "mason-registry")
-    if ok and mason_registry.has_package("java-debug-adapter") then
-      local java_debug = mason_registry.get_package("java-debug-adapter")
-      if java_debug:is_installed() then
-        local java_debug_path = java_debug:get_install_path()
-        local debug_bundles = vim.fn.glob(
-          java_debug_path
-          .. "/extension/server/com.microsoft.java.debug.plugin-*.jar",
-          true,
-          true
-        )
-        vim.list_extend(bundles, debug_bundles)
-        if #debug_bundles == 0 then
-          vim.notify(
-            "java-debug-adapter is installed, but its debug JAR was not found",
-            vim.log.levels.WARN
-          )
-        end
-      else
-        vim.notify(
-          "java-debug-adapter is not installed. Install it with :Mason",
-          vim.log.levels.WARN
-        )
-      end
-    else
-      vim.notify(
-        "Mason package java-debug-adapter was not found",
-        vim.log.levels.WARN
-      )
-    end
-
-    ----------------------------------------------------------------------------
-    -- JDTLS command
-    ----------------------------------------------------------------------------
-    local jdtls_path = vim.fn.exepath("jdtls")
-    if jdtls_path == "" then
-      vim.notify(
-        "jdtls executable was not found in PATH",
-        vim.log.levels.ERROR
-      )
-    end
-
-    local base_cmd = {
-      jdtls_path,
-      -- Must be set as a JVM system property so it is in effect *before* the
-      -- initial project import runs. Sent via settings alone it arrives too
-      -- late and the metadata has already been written.
+    local cmd = {
+      vim.fn.exepath("jdtls"),
+      -- Must be a JVM system property so it is in effect *before* the
+      -- initial project import runs; sent via settings it arrives too late.
       "--jvm-arg=-Djava.import.generatesMetadataFilesAtProjectRoot=false",
       "--jvm-arg=-Xmx8G",
     }
-
-    -- Lombok javaagent. The jar lives under the Mason install dir, which on
-    -- Windows sits beneath the user profile and may contain a space.
-    local mason_root = vim.fn.stdpath("data") .. "/mason"
-    local lombok_jar = mason_root .. "/share/jdtls/lombok.jar"
+    local lombok_jar = vim.fn.expand("$MASON/share/jdtls/lombok.jar")
     if vim.fn.filereadable(lombok_jar) == 1 then
-      local lombok_short = to_short(lombok_jar)
-      if not lombok_short then
-        vim.notify(
-          "lombok.jar path contains spaces and could not be shortened; "
-          .. "skipping the javaagent",
-          vim.log.levels.WARN
-        )
-      else
-        table.insert(
-          base_cmd,
-          string.format("--jvm-arg=-javaagent:%s", lombok_short)
-        )
-      end
-    end
-    ----------------------------------------------------------------------------
-    -- Java Test bundles
-    ----------------------------------------------------------------------------
-    if ok and mason_registry.has_package("java-test") then
-      local java_test = mason_registry.get_package("java-test")
-      if java_test:is_installed() then
-        local java_test_path = java_test:get_install_path()
-        local test_bundles = vim.fn.glob(
-          java_test_path .. "/extension/server/*.jar",
-          true,
-          true
-        )
-        -- The runner jar ships with the extension but must not be loaded
-        -- as a bundle; including it breaks jdtls startup. jacocoagent.jar
-        -- is a javaagent, not an OSGi bundle, and must be excluded too --
-        -- but org.jacoco.core is a real bundle the test plugin requires,
-        -- so only the agent jar is filtered, not every jar matching
-        -- "jacoco". The bundled org.objectweb.asm* jars duplicate what
-        -- jdtls's own plugins dir already provides at the same version;
-        -- loading both risks OSGi installing the same symbolic-name+version
-        -- bundle twice.
-        test_bundles = vim.tbl_filter(function(jar)
-          return not jar:match("com%.microsoft%.java%.test%.runner%-jar%-with%-dependencies%.jar$")
-              and not jar:match("jacocoagent%.jar$")
-              and not jar:match("org%.objectweb%.asm.*%.jar$")
-        end, test_bundles)
-        vim.list_extend(bundles, test_bundles)
-        if #test_bundles == 0 then
-          vim.notify(
-            "java-test is installed, but no bundle JARs were found",
-            vim.log.levels.WARN
-          )
-        end
-      else
-        vim.notify(
-          "java-test is not installed. Install it with :Mason",
-          vim.log.levels.WARN
-        )
-      end
+      table.insert(cmd, string.format("--jvm-arg=-javaagent:%s", lombok_jar))
     end
 
-
-    ----------------------------------------------------------------------------
-    -- JDTLS options
-    ----------------------------------------------------------------------------
     return {
-      bundles = bundles,
-
       root_dir = function(path)
-        return vim.fs.root(path, {
-          "pom.xml",
-          "build.gradle",
-          "settings.gradle",
-          ".git",
-        })
+        return vim.fs.root(path, root_markers)
       end,
 
+      -- How to find the project name for a given root dir.
       project_name = function(root_dir)
-        if root_dir then
-          return vim.fs.basename(root_dir)
-        end
-        return nil
+        return root_dir and vim.fs.basename(root_dir)
       end,
 
+      -- Where are the config and workspace dirs for a project?
       jdtls_config_dir = function(project_name)
-        local config = vim.fn.stdpath("data")
-            .. "/jdtls/"
-            .. project_name
-            .. "/config"
-        return get_short_path(config)
+        return vim.fn.stdpath("cache") .. "/jdtls/" .. project_name .. "/config"
       end,
-
       jdtls_workspace_dir = function(project_name)
-        local workspace = vim.fn.stdpath("data")
-            .. "/jdtls/"
-            .. project_name
-            .. "/workspace"
-        return get_short_path(workspace)
+        return vim.fn.stdpath("cache") .. "/jdtls/" .. project_name .. "/workspace"
       end,
 
-      cmd = base_cmd,
-
-      full_cmd = function(jdtls_opts)
+      cmd = cmd,
+      full_cmd = function(opts)
         local fname = vim.api.nvim_buf_get_name(0)
-        local root_dir = jdtls_opts.root_dir(fname)
-        local project_name = jdtls_opts.project_name(root_dir)
-        local cmd = vim.deepcopy(jdtls_opts.cmd)
+        local root_dir = opts.root_dir(fname)
+        local project_name = opts.project_name(root_dir)
+        local full = vim.deepcopy(opts.cmd)
         if project_name then
-          vim.list_extend(cmd, {
+          vim.list_extend(full, {
             "-configuration",
-            jdtls_opts.jdtls_config_dir(project_name),
+            opts.jdtls_config_dir(project_name),
             "-data",
-            jdtls_opts.jdtls_workspace_dir(project_name),
+            opts.jdtls_workspace_dir(project_name),
           })
         end
-        return cmd
+        return full
       end,
+
+      dap = { hotcodereplace = "auto", config_overrides = {} },
+      -- set to false to skip the main class scan (slow on large projects)
+      dap_main = {},
+
+      settings = {
+        java = {
+          import = { generatesMetadataFilesAtProjectRoot = false },
+          format = { enabled = true, comments = { enabled = false } },
+          signatureHelp = { enabled = true },
+          contentProvider = { preferred = "fernflower" },
+          inlayHints = {
+            parameterNames = {
+              enabled = "all",
+            },
+          },
+        },
+      },
     }
   end,
 
   config = function(_, opts)
-    ----------------------------------------------------------------------------
-    -- Java DAP configuration
-    ----------------------------------------------------------------------------
-    local dap = require("dap")
-    -- dap.configurations.java = {
-    --   {
-    --     type = "java",
-    --     request = "launch",
-    --     name = "Debug Current Java Class",
-    --     mainClass = function()
-    --       -- Normalize separators: expand("%:p") returns backslashes on
-    --       -- Windows, so the src/main/java match would never fire and the
-    --       -- package prefix would be silently dropped.
-    --       local file = vim.fn.expand("%:p"):gsub("\\", "/")
-    --       local relative = file:match("src/main/java/(.+)%.java$")
-    --           or file:match("src/test/java/(.+)%.java$")
-    --       if relative then
-    --         return (relative:gsub("/", "."))
-    --       end
-    --       return vim.fn.expand("%:t:r")
-    --     end,
-    --     projectName = function()
-    --       local pom = vim.fs.find("pom.xml", {
-    --         path = vim.fn.expand("%:p:h"),
-    --         upward = true,
-    --       })[1]
-    --       if pom then
-    --         return vim.fs.basename(vim.fs.dirname(pom))
-    --       end
-    --       return vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
-    --     end,
-    --   },
-    -- }
+    ensure_mason_packages()
 
-    ----------------------------------------------------------------------------
-    -- Start or attach JDTLS
-    ----------------------------------------------------------------------------
+    local bundles = get_bundles()
+
     local function attach_jdtls()
       local fname = vim.api.nvim_buf_get_name(0)
       if fname == "" then
         return
       end
 
-      local root_dir = opts.root_dir(fname)
-      if not root_dir then
-        vim.notify("Could not find Java project root", vim.log.levels.WARN)
+      local cmd = opts.full_cmd(opts)
+      -- mason may have only just installed it (first start)
+      cmd[1] = cmd[1] ~= "" and cmd[1] or vim.fn.exepath("jdtls")
+      if cmd[1] == "" then
+        vim.notify("jdtls is not installed yet; check :Mason and reopen the file", vim.log.levels.WARN)
         return
       end
 
-      --------------------------------------------------------------------------
-      -- Blink capabilities
-      --------------------------------------------------------------------------
-      local caps = require("blink.cmp").get_lsp_capabilities()
-      caps = vim.tbl_deep_extend("force", caps, {
-        textDocument = {
-          completion = {
-            completionItem = {
-              snippetSupport = false,
-              labelDetailsSupport = false,
-              deprecatedSupport = true,
-              preselectSupport = false,
-              insertReplaceSupport = false,
-            },
-          },
-        },
-      })
-      -- Remove resolve support to avoid the JDTLS completion issue.
-      caps.textDocument.completion.completionItem.resolveSupport = nil
-
-      --------------------------------------------------------------------------
-      -- JDTLS settings
-      --------------------------------------------------------------------------
-      -- Passed in init_options so they apply during initialize (project
-      -- import), and in settings so they are also delivered via
-      -- workspace/didChangeConfiguration for everything after.
-      local java_settings = {
-        java = {
-          import = { generatesMetadataFilesAtProjectRoot = false },
-          format = { enabled = true, comments = { enabled = false } },
-          signatureHelp = {
-            enabled = true,
-          },
-          contentProvider = {
-            preferred = "fernflower",
-          },
-        },
-      }
-
-      local config = {
-        cmd = opts.full_cmd(opts),
-        root_dir = root_dir,
-        capabilities = caps,
-
-        -- jdtls's copy of the buffer silently drifts out of sync under
-        -- incremental sync while editing: nvim's document version keeps
-        -- matching b:changedtick, so nothing errors, but the server resolves
-        -- every request against stale text. Symptoms are completion at the
-        -- wrong position (`System.` proposing local variables) and semantic
-        -- tokens landing on the wrong ranges, which reads as "highlighting is
-        -- broken". Verified by hand: forcing a full re-sync on a drifted
-        -- buffer turned 1 bogus proposal into the correct 34 System members.
-        -- Full sync resends the whole buffer per change -- negligible for
-        -- source files, and it removes the drift entirely.
-        flags = { allow_incremental_sync = false },
+      -- Existing server will be reused if the root_dir matches.
+      require("jdtls").start_or_attach({
+        cmd = cmd,
+        root_dir = opts.root_dir(fname),
         init_options = {
-          bundles = opts.bundles,
-          settings = java_settings,
+          bundles = bundles,
         },
-        settings = java_settings,
-
-        ------------------------------------------------------------------------
-        -- JDTLS attached
-        ------------------------------------------------------------------------
-        on_attach = function(client, bufnr)
-          local jdtls = require("jdtls")
-
-          -- Stop blink from sending completionItem/resolve requests.
-          -- We advertise no resolveSupport (see caps above), so resolve
-          -- returns nothing useful, yet blink still fires it while
-          -- server_capabilities.completionProvider.resolveProvider is true.
-          -- Those stale resolves are what trigger the JDTLS
-          -- "Invalid completion proposal" IllegalStateException in the log.
-          if client.server_capabilities.completionProvider then
-            client.server_capabilities.completionProvider.resolveProvider = false
-          end
-
-          ----------------------------------------------------------------------
-          -- Java keymaps
-          ----------------------------------------------------------------------
-          local map = function(lhs, rhs, desc)
-            vim.keymap.set("n", lhs, rhs, { buffer = bufnr, desc = desc })
-          end
-
-          local dapui = require("dapui")
-          local widgets = require("dap.ui.widgets")
-
-          -- Warn instead of silently serving stale completions.
-          watch_for_frozen_ast(bufnr)
-
-          -- LSP
-          map("<leader>co", jdtls.organize_imports, "Organize Imports")
-          map("<leader>cr", vim.lsp.buf.rename, "Rename")
-          map("<leader>ca", vim.lsp.buf.code_action, "Code Action")
-          map("<leader>cR", function()
-            resync_jdtls(bufnr)
-          end, "Resync jdtls working copy (fix stale completions)")
-
-          -- Session control
-          map("<leader>cds", dap.continue, "Start / Continue")
-          map("<leader>cdr", dap.restart, "Restart Session")
-          map("<leader>cdl", dap.run_last, "Run Last Config")
-          map("<leader>cdx", dap.terminate, "Terminate Session")
-          map("<leader>cdd", dap.disconnect, "Disconnect")
-          map("<leader>cdp", dap.pause, "Pause Thread")
-
-          -- Stepping
-          map("<leader>cdo", dap.step_over, "Step Over")
-          map("<leader>cdi", dap.step_into, "Step Into")
-          map("<leader>cdO", dap.step_out, "Step Out")
-          map("<leader>cdC", dap.run_to_cursor, "Run to Cursor")
-
-          -- Breakpoints
-          map("<leader>cdb", dap.toggle_breakpoint, "Toggle Breakpoint")
-          map("<leader>cdB", function()
-            vim.ui.input({ prompt = "Breakpoint condition: " }, function(cond)
-              if cond then
-                dap.set_breakpoint(cond)
-              end
-            end)
-          end, "Conditional Breakpoint")
-          map("<leader>cdL", function()
-            vim.ui.input({ prompt = "Log message: " }, function(msg)
-              if msg then
-                dap.set_breakpoint(nil, nil, msg)
-              end
-            end)
-          end, "Log Point")
-          map("<leader>cdX", dap.clear_breakpoints, "Clear All Breakpoints")
-
-          -- Stack navigation
-          map("<leader>cdk", dap.up, "Up Stack Frame")
-          map("<leader>cdj", dap.down, "Down Stack Frame")
-
-          -- Inspection
-          map("<leader>cdh", widgets.hover, "Hover Value")
-          map("<leader>cdv", function()
-            widgets.centered_float(widgets.scopes)
-          end, "Scopes (float)")
-          map("<leader>cdf", function()
-            widgets.centered_float(widgets.frames)
-          end, "Frames (float)")
-          map("<leader>cdt", function()
-            widgets.centered_float(widgets.threads)
-          end, "Threads (float)")
-          map("<leader>cde", dapui.eval, "Eval Expression")
-
-          -- UI / REPL
-          map("<leader>cdu", dapui.toggle, "Toggle DAP UI")
-          map("<leader>cdR", dap.repl.toggle, "Toggle REPL")
-
-          -- Testing
-          -- jdtls streams pass/fail results into the dap-repl buffer
-          -- asynchronously, after the short-lived test-runner DAP session
-          -- has already ended -- which is also when dapui.close() (see
-          -- dap.lua) tears down its embedded repl panel. Opening the repl
-          -- directly in its own bottom split, outside dapui's lifecycle,
-          -- keeps it visible for the results.
-          local function open_repl_bottom()
-            dap.repl.open({ height = 15 }, "botright split")
-          end
-
-          map("<leader>ctc", function()
-            open_repl_bottom()
-            jdtls.test_class()
-          end, "Test Class")
-          map("<leader>ctm", function()
-            open_repl_bottom()
-            jdtls.test_nearest_method()
-          end, "Test Nearest Method")
-          map("<leader>ctp", function()
-            open_repl_bottom()
-            jdtls.pick_test()
-          end, "Pick Test")
-
-          -- jdtls's inline ✓/✗ marks and diagnostics reflect the *last*
-          -- test run, not live compiler state -- it only clears them at
-          -- the start of the next run (jdtls/junit.lua), so a stale ✗
-          -- stays inline even after the underlying code is fixed and
-          -- saved until you run the test again. This clears them by hand.
-          map("<leader>ctx", function()
-            local junit_ns = vim.api.nvim_create_namespace("junit")
-            vim.api.nvim_buf_clear_namespace(bufnr, junit_ns, 0, -1)
-            vim.diagnostic.reset(junit_ns, bufnr)
-          end, "Clear Test Results")
-        end,
-      }
-
-      local jdtls = require("jdtls")
-      jdtls.start_or_attach(config)
-
-      --------------------------------------------------------------------------
-      -- Configure DAP after JDTLS has started.
-      --------------------------------------------------------------------------
-      vim.schedule(function()
-        jdtls.setup_dap({
-          hotcodereplace = "auto",
-        })
-      end)
+        settings = opts.settings,
+        capabilities = require("blink.cmp").get_lsp_capabilities(),
+      })
     end
 
-    ----------------------------------------------------------------------------
-    -- Attach when opening Java files
-    ----------------------------------------------------------------------------
+    -- Attach the jdtls for each java buffer. This plugin loads on the java
+    -- filetype, so the autocmd doesn't run for the first file; that one is
+    -- attached directly below.
     vim.api.nvim_create_autocmd("FileType", {
       group = vim.api.nvim_create_augroup("jdtls_attach", { clear = true }),
       pattern = java_filetypes,
       callback = attach_jdtls,
     })
 
-    ----------------------------------------------------------------------------
-    -- Attach immediately if already in a Java file
-    ----------------------------------------------------------------------------
-    if vim.bo.filetype == "java" then
-      attach_jdtls()
-    end
+    -- Setup keymaps and dap after the lsp is fully attached.
+    -- https://github.com/mfussenegger/nvim-jdtls#nvim-dap-configuration
+    vim.api.nvim_create_autocmd("LspAttach", {
+      group = vim.api.nvim_create_augroup("jdtls_lsp_attach", { clear = true }),
+      callback = function(args)
+        local client = vim.lsp.get_client_by_id(args.data.client_id)
+        if not (client and client.name == "jdtls") then
+          return
+        end
+
+        set_keymaps(args.buf)
+
+        if #bundles > 0 then
+          require("jdtls").setup_dap(opts.dap)
+          if opts.dap_main then
+            require("jdtls.dap").setup_dap_main_class_configs(opts.dap_main)
+          end
+        end
+      end,
+    })
+
+    -- Avoid race condition by calling attach the first time, since the autocmd won't fire.
+    attach_jdtls()
   end,
 }
