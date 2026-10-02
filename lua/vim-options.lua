@@ -4,6 +4,15 @@ vim.cmd("set softtabstop=4")
 vim.cmd("set shiftwidth=4")
 vim.cmd("set relativenumber")
 
+-- Write files in place. The default ("auto") often renames the original to
+-- file~ and writes a brand-new file; language servers that watch the
+-- workspace then get "Deleted"/"Created" for the open file. jdtls reacts to
+-- that by dropping its in-memory copy and answering from the file on disk,
+-- so highlighting and completion drift away from the buffer after a :w.
+vim.opt.backupcopy = "yes"
+-- only add if the lines shift
+-- vim.opt.signcolumn = "yes"
+
 -- nvim-treesitter (main) compiles parsers via `tree-sitter build`, which
 -- picks its C compiler from $CC. Prefer zig: a single-binary toolchain
 -- that needs no MSVC/Windows SDK.

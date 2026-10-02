@@ -15,8 +15,8 @@ local mason_packages = { "jdtls", "java-debug-adapter", "java-test" }
 -- Same as vim.lsp.config.jdtls.root_markers from nvim-lspconfig: the first
 -- list (multi-module / git root) wins over the second (single-module).
 local root_markers = {
-  { "mvnw", "gradlew", "settings.gradle", "settings.gradle.kts", ".git" },
-  { "build.xml", "pom.xml", "build.gradle", "build.gradle.kts" },
+  { "mvnw",      "gradlew", "settings.gradle", "settings.gradle.kts", ".git" },
+  { "build.xml", "pom.xml", "build.gradle",    "build.gradle.kts" },
 }
 
 local function ensure_mason_packages()
@@ -34,18 +34,29 @@ end
 
 -- Debug + test jars jdtls loads as plugins. The test runner jar and jacoco
 -- agent ship in the same folder but are not bundles (see the nvim-jdtls README).
+-- java-test also ships an unversioned copy of its plugin jar, plus asm jars
+-- that jdtls already has in its own plugins/ folder; passing either makes
+-- jdtls log "Failed to load extension bundles ... A bundle is already
+-- installed", so both are skipped.
 local function get_bundles()
   local registry = require("mason-registry")
   local bundles = {} ---@type string[]
   if registry.is_installed("java-debug-adapter") then
-    bundles = vim.fn.glob("$MASON/share/java-debug-adapter/com.microsoft.java.debug.plugin-*.jar", false, true)
+    bundles = vim.fn.glob("$MASON/share/java-debug-adapter/com.microsoft.java.debug.plugin-*.jar",
+      false, true)
     if registry.is_installed("java-test") then
+      local jdtls_plugins = {} ---@type table<string, boolean>
+      for _, jar in ipairs(vim.fn.glob("$MASON/share/jdtls/plugins/*.jar", false, true)) do
+        jdtls_plugins[vim.fs.basename(jar)] = true
+      end
       local test_jars = vim.fn.glob("$MASON/share/java-test/*.jar", false, true)
       vim.list_extend(
         bundles,
         vim.tbl_filter(function(jar)
           return not jar:match("com%.microsoft%.java%.test%.runner%-jar%-with%-dependencies%.jar$")
-            and not jar:match("jacocoagent%.jar$")
+              and not jar:match("jacocoagent%.jar$")
+              and not jar:match("com%.microsoft%.java%.test%.plugin%.jar$")
+              and not jdtls_plugins[vim.fs.basename(jar)]
         end, test_jars)
       )
     end
@@ -70,9 +81,12 @@ local function set_keymaps(bufnr)
   -- Refactoring (from LazyVim)
   map("<leader>cxv", jdtls.extract_variable_all, "Extract Variable")
   map("<leader>cxc", jdtls.extract_constant, "Extract Constant")
-  map("<leader>cxm", [[<ESC><CMD>lua require('jdtls').extract_method(true)<CR>]], "Extract Method", "x")
-  map("<leader>cxv", [[<ESC><CMD>lua require('jdtls').extract_variable_all(true)<CR>]], "Extract Variable", "x")
-  map("<leader>cxc", [[<ESC><CMD>lua require('jdtls').extract_constant(true)<CR>]], "Extract Constant", "x")
+  map("<leader>cxm", [[<ESC><CMD>lua require('jdtls').extract_method(true)<CR>]], "Extract Method",
+    "x")
+  map("<leader>cxv", [[<ESC><CMD>lua require('jdtls').extract_variable_all(true)<CR>]],
+    "Extract Variable", "x")
+  map("<leader>cxc", [[<ESC><CMD>lua require('jdtls').extract_constant(true)<CR>]],
+    "Extract Constant", "x")
 
   -- Session control
   map("<leader>cds", dap.continue, "Start / Continue")
@@ -191,11 +205,13 @@ return {
       end,
 
       -- Where are the config and workspace dirs for a project?
+      -- stdpath("data") rather than "cache": on Windows cache is %TEMP%\nvim,
+      -- which Storage Sense / Disk Cleanup can wipe, forcing a full reindex.
       jdtls_config_dir = function(project_name)
-        return vim.fn.stdpath("cache") .. "/jdtls/" .. project_name .. "/config"
+        return vim.fn.stdpath("data") .. "/jdtls/" .. project_name .. "/config"
       end,
       jdtls_workspace_dir = function(project_name)
-        return vim.fn.stdpath("cache") .. "/jdtls/" .. project_name .. "/workspace"
+        return vim.fn.stdpath("data") .. "/jdtls/" .. project_name .. "/workspace"
       end,
 
       cmd = cmd,
@@ -250,7 +266,8 @@ return {
       -- mason may have only just installed it (first start)
       cmd[1] = cmd[1] ~= "" and cmd[1] or vim.fn.exepath("jdtls")
       if cmd[1] == "" then
-        vim.notify("jdtls is not installed yet; check :Mason and reopen the file", vim.log.levels.WARN)
+        vim.notify("jdtls is not installed yet; check :Mason and reopen the file",
+          vim.log.levels.WARN)
         return
       end
 
