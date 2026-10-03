@@ -49,3 +49,17 @@ vim.diagnostic.config({
   underline = true,
   update_in_insert = false,
 })
+
+
+-- File type options TODO: move to separate file
+vim.filetype.add({
+  filename = {
+    ["tsconfig.json"] = "jsonc",
+    ["jsconfig.json"] = "jsonc",
+    [".eslintrc.json"] = "jsonc",
+  },
+  pattern = {
+    [".*/%.vscode/.*%.json"] = "jsonc",
+    ["tsconfig%..*%.json"] = "jsonc",
+  },
+})

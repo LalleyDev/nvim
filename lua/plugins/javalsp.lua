@@ -32,6 +32,20 @@ local function ensure_mason_packages()
   end)
 end
 
+-- get jdtls launcher on windows even if username includes space
+local function jdtls_launcher()
+  if vim.fn.has("win32") == 0 then
+    local exe = vim.fn.exepath("jdtls")
+    return exe ~= "" and { exe } or nil
+  end
+  local python = vim.fn.exepath("python")
+  local script = vim.fn.expand("$MASON/packages/jdtls/bin/jdtls")
+  if python == "" or vim.fn.filereadable(script) == 0 then
+    return nil
+  end
+  return { python, script }
+end
+
 -- Debug + test jars jdtls loads as plugins. The test runner jar and jacoco
 -- agent ship in the same folder but are not bundles (see the nvim-jdtls README).
 -- java-test also ships an unversioned copy of its plugin jar, plus asm jars
@@ -183,7 +197,6 @@ return {
   },
   opts = function()
     local cmd = {
-      vim.fn.exepath("jdtls"),
       -- Must be a JVM system property so it is in effect *before* the
       -- initial project import runs; sent via settings it arrives too late.
       "--jvm-arg=-Djava.import.generatesMetadataFilesAtProjectRoot=false",
@@ -262,14 +275,14 @@ return {
         return
       end
 
-      local cmd = opts.full_cmd(opts)
+      local launcher = jdtls_launcher()
       -- mason may have only just installed it (first start)
-      cmd[1] = cmd[1] ~= "" and cmd[1] or vim.fn.exepath("jdtls")
-      if cmd[1] == "" then
+      if not launcher then
         vim.notify("jdtls is not installed yet; check :Mason and reopen the file",
           vim.log.levels.WARN)
         return
       end
+      local cmd = vim.list_extend(launcher, opts.full_cmd(opts))
 
       -- Existing server will be reused if the root_dir matches.
       require("jdtls").start_or_attach({
