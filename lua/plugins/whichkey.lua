@@ -15,7 +15,12 @@ return {
     wk.add({
       { "<leader>f", group = "file" },
       { "<leader>e", group = "explorer" },
-      { "<leader>b", group = "buffer explorer" }
+      { "<leader>b", group = "buffer explorer" },
+      { "<leader>c", group = "code" },
+      { "<leader>cd", group = "debug" },
+      { "<leader>ct", group = "test" },
+      { "<leader>cx", group = "extract" },
+      { "<leader>cg", group = "goto" },
     }, {
     })
     local opts = {

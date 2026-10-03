@@ -7,11 +7,13 @@ return {
   branch = "main",
   lazy = false,
   build = ":TSUpdate",
+  -- mason provides the `tree-sitter` CLI that `main` compiles parsers with
+  dependencies = { "williamboman/mason.nvim" },
 
   config = function()
     require("nvim-treesitter").setup()
 
-    require("nvim-treesitter").install({
+    local parsers = {
       "java",
       "lua",
       "vim",
@@ -25,7 +27,36 @@ return {
       "tsx",
       "css",
       "html",
-    })
+    }
+
+    -- Parsers are compiled with the `tree-sitter` CLI. Without it every
+    -- install fails with "ENOENT ... 'tree-sitter'" and those languages get
+    -- no treesitter highlighting at all. Same approach as LazyVim: install
+    -- the CLI with mason (which puts it on PATH), then install the parsers.
+    local function install_parsers()
+      require("nvim-treesitter").install(parsers)
+    end
+    if vim.fn.executable("tree-sitter") == 1 then
+      install_parsers()
+    else
+      local registry = require("mason-registry")
+      registry.refresh(function()
+        local pkg = registry.get_package("tree-sitter-cli")
+        if pkg:is_installed() then
+          return install_parsers()
+        end
+        vim.notify("Installing tree-sitter-cli with mason...", vim.log.levels.INFO)
+        pkg:install({}, function(success)
+          vim.schedule(function()
+            if success then
+              install_parsers()
+            else
+              vim.notify("Failed to install tree-sitter-cli with mason", vim.log.levels.ERROR)
+            end
+          end)
+        end)
+      end)
+    end
 
     -- `main` no longer attaches highlighting itself (no `highlight.enable`
     -- option). Start it per filetype for any language whose parser is
@@ -34,10 +65,23 @@ return {
     -- filetype here (`indentexpr`), and custom Java indentation already
     -- lives in ftplugins, which treesitter indent would fight.
     vim.api.nvim_create_autocmd("FileType", {
+      group = vim.api.nvim_create_augroup("ts_highlight", { clear = true }),
       callback = function(args)
         local lang = vim.treesitter.language.get_lang(args.match) or args.match
         if vim.tbl_contains(require("nvim-treesitter").get_installed("parsers"), lang) then
-          vim.treesitter.start()
+          -- `start` asserts on the parser, so a parser that is present but
+          -- fails to load would otherwise throw on every matching buffer.
+          -- Report rather than swallow: a silent failure here is
+          -- indistinguishable from healthy treesitter in :checkhealth.
+          local ok, err = pcall(vim.treesitter.start, args.buf, lang)
+          if not ok then
+            vim.schedule(function()
+              vim.notify(
+                ("treesitter.start failed for %s (buf %d): %s"):format(lang, args.buf, err),
+                vim.log.levels.ERROR
+              )
+            end)
+          end
         end
       end,
     })

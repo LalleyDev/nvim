@@ -1,3 +1,9 @@
+-- LSP debug logging: every message to/from language servers goes to
+-- stdpath("log")/lsp.log (nvim-data/lsp.log). Set before lazy so it is in
+-- effect when jdtls starts. The file is never rotated and grows quickly at
+-- this level, so set it back to "warn" once done debugging.
+-- vim.lsp.log.set_level("debug")
+
 require("config.lazy")
 
 vim.keymap.set("n", "<space><space>x", "<cmd>source %<CR>");
