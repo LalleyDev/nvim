@@ -13,6 +13,6 @@ return {
       },
     })
 
-    vim.keymap.set("n", "<leader>cf", vim.lsp.buf.format, { desc = "Format Code" })
+    vim.keymap.set("n", "<leader>ff", vim.lsp.buf.format, { desc = "Format Code" })
   end,
 }

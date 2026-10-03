@@ -27,6 +27,9 @@ end
 vim.api.nvim_create_autocmd("User", {
   pattern = "LazyDone",
   once = true,
+  -- Without nested, the ColorScheme event from the call below is suppressed,
+  -- so lualine (theme = "auto") and other listeners never pick up the theme.
+  nested = true,
   callback = function()
     local name = load_theme() or default_theme
     if not pcall(vim.cmd.colorscheme, name) then

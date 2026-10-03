@@ -12,6 +12,9 @@ local java_filetypes = { "java" }
 -- installed by mason in addition to jdtls (which mason-lspconfig installs)
 local mason_packages = { "jdtls", "java-debug-adapter", "java-test" }
 
+-- set once jdtls has registered the real "java" dap adapter (see LspAttach)
+local dap_registered = false
+
 -- Same as vim.lsp.config.jdtls.root_markers from nvim-lspconfig: the first
 -- list (multi-module / git root) wins over the second (single-module).
 local root_markers = {
@@ -91,6 +94,7 @@ local function set_keymaps(bufnr)
   map("<leader>cr", vim.lsp.buf.rename, "Rename")
   map("<leader>ca", vim.lsp.buf.code_action, "Code Action", { "n", "v" })
   map("<leader>cgs", jdtls.super_implementation, "Goto Super")
+  map("<leader>cf", vim.lsp.buf.references, "Find All Instances")
 
   -- Refactoring (from LazyVim)
   map("<leader>cxv", jdtls.extract_variable_all, "Extract Variable")
@@ -102,53 +106,7 @@ local function set_keymaps(bufnr)
   map("<leader>cxc", [[<ESC><CMD>lua require('jdtls').extract_constant(true)<CR>]],
     "Extract Constant", "x")
 
-  -- Session control
-  map("<leader>cds", dap.continue, "Start / Continue")
-  map("<leader>cdr", dap.restart, "Restart Session")
-  map("<leader>cdl", dap.run_last, "Run Last Config")
-  map("<leader>cdx", dap.terminate, "Terminate Session")
-  map("<leader>cdd", dap.disconnect, "Disconnect")
-  map("<leader>cdp", dap.pause, "Pause Thread")
-
-  -- Stepping
-  map("<leader>cdo", dap.step_over, "Step Over")
-  map("<leader>cdi", dap.step_into, "Step Into")
-  map("<leader>cdO", dap.step_out, "Step Out")
-  map("<leader>cdC", dap.run_to_cursor, "Run to Cursor")
-
-  -- Breakpoints
-  map("<leader>cdb", dap.toggle_breakpoint, "Toggle Breakpoint")
-  map("<leader>cdB", function()
-    vim.ui.input({ prompt = "Breakpoint condition: " }, function(cond)
-      if cond then
-        dap.set_breakpoint(cond)
-      end
-    end)
-  end, "Conditional Breakpoint")
-  map("<leader>cdL", function()
-    vim.ui.input({ prompt = "Log message: " }, function(msg)
-      if msg then
-        dap.set_breakpoint(nil, nil, msg)
-      end
-    end)
-  end, "Log Point")
-  map("<leader>cdX", dap.clear_breakpoints, "Clear All Breakpoints")
-
-  -- Stack navigation
-  map("<leader>cdk", dap.up, "Up Stack Frame")
-  map("<leader>cdj", dap.down, "Down Stack Frame")
-
-  -- Inspection
-  local widgets = require("dap.ui.widgets")
-  map("<leader>cdh", widgets.hover, "Hover Value")
-  map("<leader>cdv", function() widgets.centered_float(widgets.scopes) end, "Scopes (float)")
-  map("<leader>cdf", function() widgets.centered_float(widgets.frames) end, "Frames (float)")
-  map("<leader>cdt", function() widgets.centered_float(widgets.threads) end, "Threads (float)")
-  map("<leader>cde", function() require("dapui").eval() end, "Eval Expression")
-
-  -- UI / REPL
-  map("<leader>cdu", function() require("dapui").toggle() end, "Toggle DAP UI")
-  map("<leader>cdR", dap.repl.toggle, "Toggle REPL")
+  -- Debug keymaps are global, in lsp-config.lua.
 
   -- Testing
   -- jdtls streams pass/fail results into the dap-repl buffer
@@ -318,6 +276,13 @@ return {
         set_keymaps(args.buf)
 
         if #bundles > 0 then
+          -- Drop dap.lua's on-demand stand-in, or setup_dap() keeps it and
+          -- never registers the real adapter. Only the first attach; after
+          -- that the adapter set is jdtls's own.
+          if not dap_registered then
+            require("dap").adapters.java = nil
+            dap_registered = true
+          end
           require("jdtls").setup_dap(opts.dap)
           if opts.dap_main then
             require("jdtls.dap").setup_dap_main_class_configs(opts.dap_main)
