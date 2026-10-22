@@ -1,12 +1,13 @@
 -- This is the floating terminal
-vim.keymap.set("n", "<space>lt", function()
-  vim.cmd.vnew()
-  vim.cmd.term("powershell")
-  vim.cmd.term()
-  vim.cmd.wincmd("J")
-  vim.api.nvim_win_set_height(0, 15)
-  vim.cmd("startinsert")
-end, { desc = "Open terminal in bottom split" })
+-- Replaced by the snacks.nvim terminal in lua/plugins/snacks-terminal.lua.
+-- vim.keymap.set("n", "<space>lt", function()
+--   vim.cmd.vnew()
+--   vim.cmd.term("powershell")
+--   vim.cmd.term()
+--   vim.cmd.wincmd("J")
+--   vim.api.nvim_win_set_height(0, 15)
+--   vim.cmd("startinsert")
+-- end, { desc = "Open terminal in bottom split" })
 
 
 local state = {
