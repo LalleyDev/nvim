@@ -16,6 +16,7 @@ return {
       { "<leader>f", group = "file" },
       { "<leader>g", group = "git" },
       { "<leader>h", group = "git hunk" },
+      { "<leader>o", group = "overseer (tasks)" },
       { "<leader>q", group = "session" },
       { "<leader>t", group = "tools" },
       { "<leader>c", group = "code" },
