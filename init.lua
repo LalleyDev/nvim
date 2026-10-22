@@ -6,7 +6,7 @@
 
 require("config.lazy")
 
-vim.keymap.set("n", "<space><space>x", "<cmd>source %<CR>");
+vim.keymap.set("n", "<space><space>x", "<cmd>source %<CR>", { desc = "Source current file" })
 vim.keymap.set("v", "<leader>x", ":lua<CR>", { desc = "Execute selection as Lua" })
 
 vim.api.nvim_create_autocmd("TextYankPost", {

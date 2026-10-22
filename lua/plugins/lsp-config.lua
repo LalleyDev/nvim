@@ -85,9 +85,9 @@ return {
       vim.lsp.enable("jsonls")
       vim.lsp.enable("eslint")
       -- lsp config keybinds
-      vim.keymap.set("n", "K", vim.lsp.buf.hover, {})
-      vim.keymap.set("n", "gd", vim.lsp.buf.definition, {})
-      vim.keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, {})
+      vim.keymap.set("n", "K", vim.lsp.buf.hover, { desc = "Hover documentation" })
+      vim.keymap.set("n", "gd", vim.lsp.buf.definition, { desc = "Goto definition" })
+      vim.keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, { desc = "Code Action" })
 
       -- debug keybinds (any language; adapters and configs are in dap.lua).
       -- Each requires dap on first use, which lazy-loads it.

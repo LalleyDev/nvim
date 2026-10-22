@@ -14,8 +14,9 @@ return {
     local wk = require("which-key")
     wk.add({
       { "<leader>f", group = "file" },
-      { "<leader>e", group = "explorer" },
-      { "<leader>b", group = "buffer explorer" },
+      { "<leader>h", group = "git hunk" },
+      { "<leader>q", group = "session" },
+      { "<leader>t", group = "tools" },
       { "<leader>c", group = "code" },
       { "<leader>cd", group = "debug" },
       { "<leader>ct", group = "test" },

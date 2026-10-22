@@ -20,11 +20,8 @@ vim.opt.backupcopy = "yes"
 
 -- shortcuts
 -- quickfix movement
-vim.keymap.set("n", "<M-j>", "<cmd>cnext<CR>")
-vim.keymap.set("n", "<M-k>", "<cmd>cprev<CR>")
-
--- telescope
-vim.keymap.set("n", "<M-k>", "<cmd>cprev<CR>")
+vim.keymap.set("n", "<M-j>", "<cmd>cnext<CR>", { desc = "Next quickfix item" })
+vim.keymap.set("n", "<M-k>", "<cmd>cprev<CR>", { desc = "Previous quickfix item" })
 
 -- general keymaps
 
@@ -37,7 +34,7 @@ vim.keymap.set("v", "<C-/>", "gc", { remap = true, desc = "Toggle comment select
 vim.keymap.set("v", "<C-_>", "gc", { remap = true, desc = "Toggle comment selection" })
 
 -- Quality of life terminal keymaps
-vim.keymap.set("t", "<esc><esc>", "<c-\\><c-n>")
+vim.keymap.set("t", "<esc><esc>", "<c-\\><c-n>", { desc = "Exit terminal mode" })
 
 -- Diagnostics
 vim.diagnostic.config({

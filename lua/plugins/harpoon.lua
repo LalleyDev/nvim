@@ -10,10 +10,10 @@ return{
             local mark = require("harpoon.mark")
 
             -- mark/ add the files to harpoon
-            vim.keymap.set("n","<space>m",mark.add_file)
+            vim.keymap.set("n","<space>m",mark.add_file, { desc = "Harpoon mark file" })
 
             -- see the files that have been marked
-            vim.keymap.set("n","<space>v",ui.toggle_quick_menu)
+            vim.keymap.set("n","<space>v",ui.toggle_quick_menu, { desc = "Harpoon quick menu" })
 
             vim.keymap.set("n", "<M-1>", function() ui.nav_file(1) end, { desc = "Harpoon file 1" })
             vim.keymap.set("n", "<M-2>", function() ui.nav_file(2) end, { desc = "Harpoon file 2" })

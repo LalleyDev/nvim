@@ -6,7 +6,7 @@ vim.keymap.set("n", "<space>lt", function()
   vim.cmd.wincmd("J")
   vim.api.nvim_win_set_height(0, 15)
   vim.cmd("startinsert")
-end)
+end, { desc = "Open terminal in bottom split" })
 
 
 local state = {
