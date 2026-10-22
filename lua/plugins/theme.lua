@@ -75,21 +75,4 @@ return {
     priority = 1000,
   },
   { "EdenEast/nightfox.nvim" },
-  {
-    "folke/snacks.nvim",
-    lazy = false,
-    priority = 1000,
-    opts = {
-      picker = { enabled = true },
-    },
-    keys = {
-      {
-        "<leader>th",
-        function()
-          Snacks.picker.colorschemes({ layout = "ivy" })
-        end,
-        desc = "Pick colorscheme",
-      },
-    },
-  },
 }
